@@ -20,6 +20,9 @@ class DNN:
     self.alpha = 0.02
     self.lam = 0.001
     # 数据初始化
+    self.word_batch = None
+    self.label_batch = None
+    self.dictionary = None
     # 模型定义和初始化
     self.sess = tf.Session()
     self.optimizer = tf.train.GradientDescentOptimizer(self.alpha)
@@ -28,10 +31,13 @@ class DNN:
       tf.truncated_normal([self.vocab_size, self.embed_size], stddev=-1.0 / math.sqrt(self.embed_size),
                           dtype=self.dtype), dtype=self.dtype, name='embeddings')
     self.w = tf.Variable(
-      tf.truncated_normal([self.tag_count, self.hidden_units], stddev=1.0 / math.sqrt(self.concat_embed_size)),
-      dtype=self.dtype)
+      tf.truncated_normal([self.tag_count, self.hidden_units], stddev=1.0 / math.sqrt(self.concat_embed_size),
+                          dtype=self.dtype), dtype=self.dtype)
     self.b = tf.Variable(tf.zeros([self.tag_count, 1]), dtype=self.dtype)
-    self.transition = tf.Variable(tf.random_uniform([self.tag_count, self.tag_count], -0.05, 0.05), dtype=self.dtype)
+    self.transition = tf.Variable(tf.random_uniform([self.tag_count, self.tag_count], -0.05, 0.05, dtype=self.dtype),
+                                  dtype=self.dtype)
+    self.transition_init = tf.Variable(
+      tf.random_uniform([self.tag_count, self.tag_count], -0.05, 0.05, dtype=self.dtype), dtype=self.dtype)
 
   def train(self):
     pass

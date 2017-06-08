@@ -13,9 +13,12 @@ class TransitionSLSTM:
 
     # 构建模型
     self.sess = tf.Session()
-    self.stack = tf.placeholder(tf.float32,[self.embed_size,None])
-    self.buffer = tf.placeholder(tf.float32,[self.embed_size,None])
-    self.history_action = tf.placeholder(tf.float32,[self.embed_size,None])
+    # placeholder
+    self.stack = tf.placeholder(self.dtype,[self.embed_size,None])
+    self.buffer = tf.placeholder(self.dtype,[self.embed_size,None])
+    self.history_action = tf.placeholder(self.dtype,[self.embed_size,None])
+    self.allowed_action = tf.placeholder(self.dtype,[self.embed_size,None])
+    # 变量
     self.action = tf.Variable(tf.random_uniform([self.action_count,self.hidden_unit],-1,1,dtype=self.dtype))
     self.action_bias = tf.Variable(tf.random_uniform([self.action_count,self.hidden_unit],-1,1,dtype=self.dtype))
-    #self.
+    
