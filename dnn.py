@@ -22,7 +22,7 @@ class DNN(DNNBase):
     self.tags_count = len(self.tags)
     self.concat_embed_size = self.window_size * self.embed_size
     self.alpha = 0.02
-    self.lam = 0.001
+    self.lam = 0.0001
     # 数据初始化
     pre = PreprocessData('pku')
     self.characters_batch = pre.characters_batch
@@ -119,5 +119,3 @@ class DNN(DNNBase):
 if __name__ == '__main__':
   dnn = DNN()
   dnn.train_exe()
-  # print(dnn.seg('小明来自南京师范大学'))
-  # print(dnn.seg('小明是上海理工大学的学生'))
