@@ -11,7 +11,7 @@ class DNN(DNNBase):
   def __init__(self, type='mlp'):
     DNNBase.__init__(self)
     # 参数初始化
-    self.dtype = tf.float64
+    self.dtype = tf.float32
     self.skip_window_left = 1
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
@@ -60,7 +60,15 @@ class DNN(DNNBase):
       self.word_scores = tf.matmul(self.w,
                                    tf.sigmoid(tf.matmul(self.hidden_w, self.input_embeds) + self.hidden_b)) + self.b
       self.params += [self.hidden_w, self.hidden_b]
-
+    elif type == 'lstm':
+      self.input_embeds = tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input),
+                                                  [-1,1, self.concat_embed_size])
+      self.lstm = tf.contrib.rnn.LSTMCell(self.hidden_units)
+      self.lstm_output, self.lstm_out_state = tf.nn.dynamic_rnn(self.lstm, self.input_embeds, dtype=self.dtype,
+                                                                time_major=True)
+      #tf.global_variables_initializer().run(session=self.sess)
+      self.word_scores = tf.matmul(self.w, tf.transpose(self.lstm_output[:, -1, :])) + self.b
+      self.params += [v for v in tf.global_variables() if v.name.startswith('rnn')]
     self.loss = tf.reduce_sum(
       tf.gather_nd(self.word_scores, self.label_index_current) -
       tf.gather_nd(self.word_scores, self.label_index_correct)) + tf.contrib.layers.apply_regularization(
@@ -74,13 +82,14 @@ class DNN(DNNBase):
     epoches = 10
     last_time = time.time()
     for i in range(epoches):
+      print('epoch:%d'%i)
       for sentence_index, (sentence, labels) in enumerate(zip(self.characters_batch, self.labels_batch)):
         self.train_sentence(sentence, labels)
         if sentence_index > 0 and sentence_index % 1000 == 0:
           print(sentence_index)
           print(time.time() - last_time)
           last_time = time.time()
-      self.saver.save(self.sess, 'tmp/mlp-model%d.ckpt' % (i + 10))
+      self.saver.save(self.sess, 'tmp/lstm-model%d.ckpt' % i)
 
   def train_sentence(self, sentence, labels):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence})
@@ -103,6 +112,9 @@ class DNN(DNNBase):
     if update_init:
       self.sess.run(self.update_transition_init, feed_dict={self.transition_init_holder: transition_init_update})
 
+  def train_batch(self,sentences_batch,labels_batch):
+    pass
+
   def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False):
     self.saver.restore(self.sess, model_path)
     seq = self.index2seq(self.sentence2index(sentence))
@@ -117,5 +129,6 @@ class DNN(DNNBase):
 
 
 if __name__ == '__main__':
-  dnn = DNN()
+  # dnn = DNN()
+  dnn = DNN('lstm')
   dnn.train_exe()
