@@ -27,9 +27,10 @@ class DNN(DNNBase):
     self.batch_length = batch_length
     self.batch_size = batch_size
     self.mode = mode
+    self.type = type
     self.is_seg = is_seg
     # 数据初始化
-    pre = PreprocessData('pku', TrainMode.Batch)
+    pre = PreprocessData('pku', self.mode)
     self.character_batches = pre.character_batches
     self.label_batches = pre.label_batches
     self.dictionary = pre.dictionary
@@ -69,6 +70,7 @@ class DNN(DNNBase):
       self.lstm = tf.contrib.rnn.LSTMCell(self.hidden_units)
       if self.mode == TrainMode.Batch:
         if not self.is_seg:
+          self.lengths = pre.lengths
           self.input = tf.placeholder(tf.int32, shape=[self.batch_size, self.batch_length, self.window_size])
           self.input_embeds = tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input),
                                          [self.batch_size, self.batch_length, self.concat_embed_size])
@@ -79,14 +81,11 @@ class DNN(DNNBase):
           self.label_index_correct = tf.placeholder(tf.int32, shape=[None, 3])
           self.label_index_current = tf.placeholder(tf.int32, shape=[None, 3])
         else:
-          self.input = tf.placeholder(tf.int32, shape=[None, self.window_size])
           self.input_embeds = tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input),
                                          [-1, 1, self.concat_embed_size])
           self.lstm_output, self.lstm_out_state = tf.nn.dynamic_rnn(self.lstm, self.input_embeds, dtype=self.dtype,
                                                                     time_major=True)
           self.word_scores = tf.matmul(self.w, tf.transpose(self.lstm_output[:, -1, :])) + self.b
-          self.label_index_correct = tf.placeholder(tf.int32, shape=[None, 2])
-          self.label_index_current = tf.placeholder(tf.int32, shape=[None, 2])
 
       self.params += [v for v in tf.global_variables() if v.name.startswith('rnn')]
     self.loss = tf.reduce_sum(
@@ -110,12 +109,16 @@ class DNN(DNNBase):
             print(sentence_index)
             print(time.time() - last_time)
             last_time = time.time()
-        self.saver.save(self.sess, 'tmp/lstm-model%d.ckpt' % i)
+        if self.type == 'mlp':
+          self.saver.save(self.sess, 'tmp/mlp-model%d.ckpt' % i)
+        elif self.type == 'lstm':
+          self.saver.save(self.sess, 'tmp/lstm-model%d.ckpt' % i)
     elif self.mode == TrainMode.Batch:
       for i in range(epoches):
         print('epoch:%d' % i)
-        for batch_index, (character_batch, label_batch) in enumerate(zip(self.character_batches, self.label_batches)):
-          self.train_batch(character_batch, label_batch)
+        for batch_index, (character_batch, label_batch, lengths) in enumerate(
+            zip(self.character_batches, self.label_batches, self.lengths)):
+          self.train_batch(character_batch, label_batch, lengths)
           if batch_index > 0 and batch_index % 500 == 0:
             print(batch_index)
             print(time.time() - last_time)
@@ -144,7 +147,7 @@ class DNN(DNNBase):
     if update_init:
       self.sess.run(self.update_transition_init, feed_dict={self.transition_init_holder: transition_init_update})
 
-  def train_batch(self, sentence_batches, label_batches):
+  def train_batch(self, sentence_batches, label_batches, lengths):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence_batches})
     transition = self.transition.eval(session=self.sess)
     transition_init = self.transition_init.eval(session=self.sess)
@@ -152,9 +155,9 @@ class DNN(DNNBase):
     update_labels_neg = None
     current_labels = []
     for i in range(self.batch_size):
-      current_label = self.viterbi(scores[:, :, i], transition, transition_init)
+      current_label = self.viterbi(scores[:, :lengths[i], i], transition, transition_init)
       current_labels.append(current_label)
-      diff_tag = np.subtract(label_batches[i], current_label)
+      diff_tag = np.subtract(label_batches[i, :lengths[i]], current_label)
       update_index = np.where(diff_tag != 0)[0]
       update_length = len(update_index)
       if update_length == 0:
@@ -174,8 +177,8 @@ class DNN(DNNBase):
 
     # 更新转移矩阵
     for i in range(self.batch_size):
-      transition_update, transition_init_update, update_init = self.generate_transition_update(label_batches[i],
-                                                                                               current_labels[i])
+      transition_update, transition_init_update, update_init = self.generate_transition_update(
+        label_batches[i, :lengths[i]], current_labels[i])
       self.sess.run(self.update_transition, feed_dict={self.transition_holder: transition_update})
       if update_init:
         self.sess.run(self.update_transition_init, feed_dict={self.transition_init_holder: transition_init_update})
@@ -194,6 +197,6 @@ class DNN(DNNBase):
 
 
 if __name__ == '__main__':
-  # dnn = DNN()
+  # dnn = DNN('mlp', mode=TrainMode.Sentence)
   dnn = DNN('lstm')
   dnn.train_exe()
