@@ -20,6 +20,7 @@ class PreprocessData:
     elif mode == TrainMode.Batch:
       self.characters = np.load(self.input_base + '_character_batches.npy')
       self.labels = np.load(self.input_base + '_label_batches.npy')
+      self.lengths = np.load(self.input_base+'_lengths.npy')
       self.character_batches, self.label_batches = self.generate_batches()
     else:
       print('模式错误')
