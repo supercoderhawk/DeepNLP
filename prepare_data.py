@@ -43,9 +43,10 @@ class PrepareData:
         np.save(self.output_base + 'characters', self.characters_index)
         np.save(self.output_base + 'labels', self.labels_index)
       elif mode == TrainMode.Batch:
-        self.character_batches, self.label_batches, lengths = self.build_batch()
+        self.character_batches, self.label_batches, self.lengths = self.build_batch()
         np.save(self.output_base + 'character_batches', self.character_batches)
         np.save(self.output_base + 'label_batches', self.label_batches)
+        np.save(self.output_base + 'lengths', self.lengths)
     elif type == CorpusType.Test:
       self.raw_sentences = list(map(lambda s: s.replace(self.SPLIT_CHAR, ''), self.sentences))
       if os.path.exists('corpus/' + corpus + '_test_labels.npy'):
@@ -125,27 +126,28 @@ class PrepareData:
     label_batches = []
     lengths = []
     parts = []
+    unknown = 4
     for line in self.sentences:
       sentences = line.split('。')
       sections = list(map(lambda s: s.strip().split(','), sentences))
       sections = list(filter(lambda s: len(s) > 0, list(map(lambda s: s.strip(), [j for i in sections for j in i]))))
       parts.extend(sections)
-      lengths.extend(list(map(lambda s: len(s.replace(' ', '')), sections)))
 
-    lengths.sort(reverse=True)
     sentence_count = len(parts)
 
     for part in parts:
       length = 0
+      real_length = 0
       character_batch = []
       label_batch = []
       segments = part.split(self.SPLIT_CHAR)
       for segment in segments:
         segment_length = len(segment)
         if length + segment_length > self.batch_length:
-          extra = [0] * (self.batch_length - length)
+          extra = [unknown] * (self.batch_length - length)
           character_batch.extend(extra)
           label_batch.extend(extra)
+          real_length = length
           length = self.batch_length
           break
         elif length + segment_length <= self.batch_length:
@@ -164,17 +166,24 @@ class PrepareData:
               character_batch.append(index)
             else:
               character_batch.append(1)
+          if length == self.batch_length:
+            real_length = length
       if length < self.batch_length:
-        extra = [0] * (self.batch_length - length)
+        extra = [unknown] * (self.batch_length - length)
         character_batch.extend(extra)
         label_batch.extend(extra)
+        real_length = length
+
+      lengths.append(real_length)
       character_batches.append(character_batch)
       label_batches.append(label_batch)
 
     extra_count = sentence_count % self.batch_size
-    np.array([np.array(x, dtype=np.int32) for x in character_batches[:-extra_count]])
-    character_batches = np.array(character_batches[:-extra_count]).reshape([-1, self.batch_size, self.batch_length])
-    label_batches = np.array(label_batches[:-extra_count]).reshape([-1, self.batch_size, self.batch_length])
+    character_batches = np.array(character_batches[:-extra_count], dtype=np.int32).reshape(
+      [-1, self.batch_size, self.batch_length])
+    label_batches = np.array(label_batches[:-extra_count], dtype=np.int32).reshape(
+      [-1, self.batch_size, self.batch_length])
+    lengths = np.array(lengths[:-extra_count], dtype=np.int32).reshape([-1, self.batch_size])
     return character_batches, label_batches, lengths
 
   def plot_lengths(self, lengths):
