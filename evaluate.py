@@ -35,9 +35,9 @@ def estimate_cws(current_labels, correct_labels):
   return cor_count, prec_length, recall_length
 
 
-def evaludate_dnn():
+def evaluate_dnn():
   cws = DNN('lstm', is_seg=True)
-  model = 'tmp/lstm-bmodel0.ckpt'
+  model = 'tmp/lstm-bmodel2.ckpt'
   print(cws.seg('小明来自南京师范大学', model, debug=True))
   print(cws.seg('小明是上海理工大学的学生', model))
   print(cws.seg('迈向充满希望的新世纪', model))
@@ -64,4 +64,4 @@ def evaludate_dnn():
 
 
 if __name__ == '__main__':
-  evaludate_dnn()
+  evaluate_dnn()
