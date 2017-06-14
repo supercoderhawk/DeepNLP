@@ -10,6 +10,7 @@ class DNNBase(Base):
     self.dictionary = None
     self.skip_window_left = 1
     self.skip_window_right = 1
+
   def viterbi(self, emission, A, init_A, return_score=False):
     """
     维特比算法的实现，所有输入和返回参数均为numpy数组对象
@@ -43,7 +44,8 @@ class DNNBase(Base):
       return corr_path, path_score[max_index, -1]
     else:
       return corr_path
-  def gen_update_A(self, correct_tags, current_tags):
+
+  def generate_transition_update(self, correct_tags, current_tags):
     A_update = np.zeros([self.tags_count, self.tags_count], dtype=np.float32)
     init_A_update = np.zeros([self.tags_count], dtype=np.float32)
     before_corr = correct_tags[0]
@@ -63,6 +65,7 @@ class DNNBase(Base):
       before_curr = curr_tag
 
     return A_update, init_A_update, update_init
+
   def sentence2index(self, sentence):
     index = []
     for word in sentence:
