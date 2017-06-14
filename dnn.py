@@ -168,8 +168,9 @@ class DNN(DNNBase):
         update_labels_pos = update_label_pos
         update_labels_neg = update_label_neg
 
-    self.sess.run(self.train, feed_dict={self.input: sentence_batches, self.label_index_current: update_labels_neg,
-                                         self.label_index_correct: update_labels_pos})
+    if update_labels_pos is not None and update_labels_neg is not None:
+      self.sess.run(self.train, feed_dict={self.input: sentence_batches, self.label_index_current: update_labels_neg,
+                                           self.label_index_correct: update_labels_pos})
 
     # 更新转移矩阵
     for i in range(self.batch_size):
