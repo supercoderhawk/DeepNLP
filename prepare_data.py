@@ -4,16 +4,23 @@ import re
 import os
 import collections
 from utils import strQ2B
-from config import CorpusType
+from config import CorpusType, TrainMode
+import matplotlib.pyplot as plt
 
 
 class PrepareData:
-  def __init__(self, vocab_size, corpus, dict_path=None, type=CorpusType.Train):
+  def __init__(self, vocab_size, corpus, batch_length=40, batch_size=20, dict_path=None, mode=TrainMode.Batch,
+               type=CorpusType.Train):
     self.vocab_size = vocab_size
     self.dict_path = dict_path
+    self.batch_length = batch_length
+    self.batch_size = batch_size
     self.SPLIT_CHAR = '  '  # 分隔符：双空格
-    self.count = [['UNK', 0], ['STRT', 0],
-                  ['END', 0]]  # 字符数量，其中'UNK'表示词汇表外的字符，'STAT'表示句子首字符之前的字符，'END'表示句子尾字符后面的字符，这两个字符用于生成字的上下文
+    # 字符数量，
+    # 其中'BATCH_PAD'表示构建batch时不足时补的字符，'UNK'表示词汇表外的字符，
+    # 'STAT'表示句子首字符之前的字符，'END'表示句子尾字符后面的字符，这两个字符用于生成字的上下文
+    self.count = [['BATCH_PAD', 0], ['UNK', 0], ['STRT', 0], ['END', 0]]
+    self.init_count = len(self.count)
     if type == CorpusType.Train:
       self.input_file = 'corpus/' + corpus + '_' + 'training.utf8'
       self.output_base = 'corpus/' + corpus + '_' + 'training_'
@@ -31,13 +38,18 @@ class PrepareData:
       exit(1)
 
     if type == CorpusType.Train:
-      self.characters_index, self.labels_index = self.build_dataset()
-      np.save(self.output_base + 'characters', self.characters_index)
-      np.save(self.output_base + 'labels', self.labels_index)
+      if mode == TrainMode.Sentence:
+        self.characters_index, self.labels_index = self.build_dataset()
+        np.save(self.output_base + 'characters', self.characters_index)
+        np.save(self.output_base + 'labels', self.labels_index)
+      elif mode == TrainMode.Batch:
+        self.character_batches, self.label_batches, lengths = self.build_batch()
+        np.save(self.output_base + 'character_batches', self.character_batches)
+        np.save(self.output_base + 'label_batches', self.label_batches)
     elif type == CorpusType.Test:
-      self.raw_sentences = list(map(lambda s:s.replace(self.SPLIT_CHAR,''),self.sentences))
-      if os.path.exists('corpus/'+corpus+'_test_labels.npy'):
-        self.labels_index = np.load('corpus/'+corpus+'_test_labels.npy')
+      self.raw_sentences = list(map(lambda s: s.replace(self.SPLIT_CHAR, ''), self.sentences))
+      if os.path.exists('corpus/' + corpus + '_test_labels.npy'):
+        self.labels_index = np.load('corpus/' + corpus + '_test_labels.npy')
       else:
         _, self.labels_index = self.build_dataset()
 
@@ -53,9 +65,9 @@ class PrepareData:
     dictionary = {}
     words = ''.join(self.sentences).replace(' ', '')
     vocab_count = len(collections.Counter(words))
-    if vocab_count + 3 < self.vocab_size:
+    if vocab_count + self.init_count < self.vocab_size:
       return None
-    self.count.extend(collections.Counter(words).most_common(self.vocab_size - 3))
+    self.count.extend(collections.Counter(words).most_common(self.vocab_size - self.init_count))
 
     for word, _ in self.count:
       dictionary[word] = len(dictionary)
@@ -108,7 +120,84 @@ class PrepareData:
       labels_index.append(sentence_label)
     return np.array(sentence_index), np.array(labels_index)
 
+  def build_batch(self):
+    character_batches = []
+    label_batches = []
+    lengths = []
+    parts = []
+    for line in self.sentences:
+      sentences = line.split('。')
+      sections = list(map(lambda s: s.strip().split(','), sentences))
+      sections = list(filter(lambda s: len(s) > 0, list(map(lambda s: s.strip(), [j for i in sections for j in i]))))
+      parts.extend(sections)
+      lengths.extend(list(map(lambda s: len(s.replace(' ', '')), sections)))
+
+    lengths.sort(reverse=True)
+    sentence_count = len(parts)
+
+    for part in parts:
+      length = 0
+      character_batch = []
+      label_batch = []
+      segments = part.split(self.SPLIT_CHAR)
+      for segment in segments:
+        segment_length = len(segment)
+        if length + segment_length > self.batch_length:
+          extra = [0] * (self.batch_length - length)
+          character_batch.extend(extra)
+          label_batch.extend(extra)
+          length = self.batch_length
+          break
+        elif length + segment_length <= self.batch_length:
+          length += segment_length
+          if segment_length == 0:
+            continue
+          elif segment_length == 1:
+            label_batch.append(0)
+          else:
+            label_batch.append(1)
+            label_batch.extend([2] * (segment_length - 2))
+            label_batch.append(3)
+          for ch in segment:
+            index = self.dictionary.get(ch)
+            if index != None:
+              character_batch.append(index)
+            else:
+              character_batch.append(1)
+      if length < self.batch_length:
+        extra = [0] * (self.batch_length - length)
+        character_batch.extend(extra)
+        label_batch.extend(extra)
+      character_batches.append(character_batch)
+      label_batches.append(label_batch)
+
+    extra_count = sentence_count % self.batch_size
+    np.array([np.array(x, dtype=np.int32) for x in character_batches[:-extra_count]])
+    character_batches = np.array(character_batches[:-extra_count]).reshape([-1, self.batch_size, self.batch_length])
+    label_batches = np.array(label_batches[:-extra_count]).reshape([-1, self.batch_size, self.batch_length])
+    return character_batches, label_batches, lengths
+
+  def plot_lengths(self, lengths):
+    pre_i = lengths[0]
+    count = []
+    x = []
+    j = 0
+    for i in lengths:
+      if pre_i == i:
+        j += 1
+      else:
+        count.append(j)
+        x.append(pre_i)
+        j = 0
+        pre_i = i
+
+    print(len(list(filter(lambda l: l > self.batch_length, lengths))))
+    print(len(lengths))
+    x = range(len(count))
+    plt.plot(x, count)
+    plt.ylabel('长度')
+    plt.show()
+
 
 if __name__ == '__main__':
-  PrepareData(4000, 'pku')
-  PrepareData(4000, 'msr')
+  pre = PrepareData(4000, 'pku', mode=TrainMode.Batch)
