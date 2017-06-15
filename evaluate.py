@@ -35,13 +35,27 @@ def estimate_cws(current_labels, correct_labels):
   return cor_count, prec_length, recall_length
 
 
-def evaluate_dnn():
-  cws = DNN('lstm', is_seg=True)
-  model = 'tmp/lstm-bmodel2.ckpt'
+def evaluate_mlp():
+  cws = DNN('mlp')
+  model = 'tmp/mlp-model9.ckpt'
   print(cws.seg('小明来自南京师范大学', model, debug=True))
   print(cws.seg('小明是上海理工大学的学生', model))
   print(cws.seg('迈向充满希望的新世纪', model))
   print(cws.seg('我爱北京天安门', model))
+  evaluate_model(cws, model)
+
+
+def evaluate_lstm():
+  cws = DNN('lstm', is_seg=True)
+  model = 'tmp/lstm-bmodel5.ckpt'
+  print(cws.seg('小明来自南京师范大学', model, debug=True))
+  print(cws.seg('小明是上海理工大学的学生', model))
+  print(cws.seg('迈向充满希望的新世纪', model))
+  print(cws.seg('我爱北京天安门', model))
+  evaluate_model(cws, model)
+
+
+def evaluate_model(cws, model):
   pre = PrepareData(4000, 'pku', dict_path='corpus/pku_dict.utf8', type=CorpusType.Test)
   sentences = pre.raw_sentences
   labels = pre.labels_index
@@ -64,4 +78,5 @@ def evaluate_dnn():
 
 
 if __name__ == '__main__':
-  evaluate_dnn()
+  # evaluate_mlp()
+  evaluate_lstm()
