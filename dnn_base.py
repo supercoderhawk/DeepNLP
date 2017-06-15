@@ -46,6 +46,10 @@ class DNNBase(Base):
       return corr_path
 
   def generate_transition_update(self, correct_tags, current_tags):
+    if correct_tags.shape != current_tags.shape:
+      print('序列长度不同')
+      return None
+
     A_update = np.zeros([self.tags_count, self.tags_count], dtype=np.float32)
     init_A_update = np.zeros([self.tags_count], dtype=np.float32)
     before_corr = correct_tags[0]
