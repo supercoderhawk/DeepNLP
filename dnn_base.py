@@ -74,15 +74,15 @@ class DNNBase(Base):
     index = []
     for word in sentence:
       if word not in self.dictionary:
-        index.append(0)
+        index.append(1)
       else:
         index.append(self.dictionary[word])
 
     return index
 
   def index2seq(self, indices):
-    ext_indices = [1] * self.skip_window_left
-    ext_indices.extend(indices + [2] * self.skip_window_right)
+    ext_indices = [2] * self.skip_window_left
+    ext_indices.extend(indices + [3] * self.skip_window_right)
     seq = []
     for index in range(self.skip_window_left, len(ext_indices) - self.skip_window_right):
       seq.append(ext_indices[index - self.skip_window_left: index + self.skip_window_right + 1])
