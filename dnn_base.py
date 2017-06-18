@@ -10,6 +10,7 @@ class DNNBase(Base):
     self.dictionary = None
     self.skip_window_left = 1
     self.skip_window_right = 1
+    self.hinge_discount = 0.2
 
   def viterbi(self, emission, A, init_A, return_score=False):
     """
@@ -44,6 +45,34 @@ class DNNBase(Base):
       return corr_path, path_score[max_index, -1]
     else:
       return corr_path
+
+  def viterbi_new(self,emission,transition,transition_init,labels=None):
+    constraint = [[0, 1], [2, 3], [2, 3], [0, 1]]
+    length = emission.shape[1]
+    path = np.ones([self.tags_count, length], dtype=np.int32) * -1
+    corr_path = np.zeros([length], dtype=np.int32)
+    path_score = np.ones([self.tags_count, length], dtype=np.float64) * (np.finfo('f').min / 2)
+    # path_score[:, 0] = transition_init + emission[:, 0]
+    path_score[:2,0] = 0
+
+    for pos in range(1,length):
+      for path_index in range(self.tags_count):
+        for curr_label in constraint[path_index]:
+          tmp = path_score[path_index,pos-1]+emission[curr_label,pos]+transition[path_index,curr_label]
+          if labels is not None:
+            if curr_label != labels[pos]:
+              tmp += self.hinge_discount
+          if tmp > path_score[curr_label,pos]:
+            path_score[curr_label,pos] = tmp
+            path[curr_label,pos] = path_index
+
+    #print(path)
+    max_index = np.argmax(path_score[:, -1])
+    corr_path[length - 1] = max_index
+    for i in range(length - 1, 0, -1):
+      max_index = path[max_index][i]
+      corr_path[i - 1] = max_index
+    return corr_path
 
   def generate_transition_update(self, correct_tags, current_tags):
     if correct_tags.shape != current_tags.shape:
