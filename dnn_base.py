@@ -70,6 +70,34 @@ class DNNBase(Base):
 
     return A_update, init_A_update, update_init
 
+  def generate_transition_update_index(self, correct_labels, current_labels):
+    if correct_labels.shape != current_labels.shape:
+      print('序列长度不同')
+      return None
+
+    before_corr = correct_labels[0]
+    before_curr = current_labels[0]
+    update_init = False
+
+    trans_init_pos = None
+    trans_init_neg = None
+    trans_pos = []
+    trans_neg = []
+
+    if before_corr != before_curr:
+      trans_init_pos = [before_corr]
+      trans_init_neg = [before_curr]
+      update_init = True
+
+    for _, (corr_label, curr_label) in enumerate(zip(correct_labels[1:], current_labels[1:])):
+      if corr_label != curr_label or before_corr != before_curr:
+        trans_pos.append([before_corr, corr_label])
+        trans_neg.append([before_curr, curr_label])
+      before_corr = corr_label
+      before_curr = curr_label
+
+    return trans_pos, trans_neg, trans_init_pos, trans_init_neg, update_init
+
   def sentence2index(self, sentence):
     index = []
     for word in sentence:
