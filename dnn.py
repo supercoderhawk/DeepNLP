@@ -51,10 +51,10 @@ class DNN(DNNBase):
     self.transition_init = tf.Variable(tf.random_uniform([self.tags_count], -0.05, 0.05, dtype=self.dtype))
     self.transition_holder = tf.placeholder(self.dtype, shape=self.transition.get_shape())
     self.transition_init_holder = tf.placeholder(self.dtype, shape=self.transition_init.get_shape())
-    #self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
+    # self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
     self.optimizer = tf.train.AdagradOptimizer(self.learning_rate)
-    #self.optimizer = tf.train.MomentumOptimizer(0.01,0.9)
-    #self.optimizer = tf.train.AdamOptimizer(0.0001)#,beta1=0.1,beta2=0.001)
+    # self.optimizer = tf.train.MomentumOptimizer(0.01,0.9)
+    # self.optimizer = tf.train.AdamOptimizer(0.0001)#,beta1=0.1,beta2=0.001)
     self.update_transition = self.transition.assign(
       tf.add((1 - self.learning_rate * self.lam) * self.transition,
              self.learning_rate * self.transition_holder))
@@ -106,8 +106,8 @@ class DNN(DNNBase):
           self.label_index_current = tf.placeholder(tf.int32, shape=[None, 3])
           self.transition_correct_holder = tf.placeholder(tf.int32, [None, 2])
           self.transition_current_holder = tf.placeholder(tf.int32, [None, 2])
-          self.transition_init_correct_holder = tf.placeholder(tf.int32,[None,1])
-          self.transition_init_current_holder = tf.placeholder(tf.int32,[None,1])
+          self.transition_init_correct_holder = tf.placeholder(tf.int32, [None, 1])
+          self.transition_init_current_holder = tf.placeholder(tf.int32, [None, 1])
           self.loss_scores = tf.reduce_sum(tf.gather_nd(self.word_scores, self.label_index_current) -
                                            tf.gather_nd(self.word_scores, self.label_index_correct)) + tf.reduce_sum(
             tf.gather_nd(self.transition, self.transition_current_holder) - tf.gather_nd(self.transition,
@@ -118,7 +118,7 @@ class DNN(DNNBase):
           self.regularization = tf.contrib.layers.apply_regularization(tf.contrib.layers.l2_regularizer(self.lam),
                                                                        self.params + [self.transition])
           self.regularization_with_init = tf.contrib.layers.apply_regularization(
-            tf.contrib.layers.l2_regularizer(self.lam),self.params + [self.transition, self.transition_init])
+            tf.contrib.layers.l2_regularizer(self.lam), self.params + [self.transition, self.transition_init])
           self.loss = self.loss_scores / self.batch_size + self.regularization
           self.loss_with_init = self.loss_scores_with_init / self.batch_size + self.regularization_with_init
         else:
@@ -144,7 +144,7 @@ class DNN(DNNBase):
         print('epoch:%d' % i)
         for sentence_index, (sentence, labels) in enumerate(zip(self.character_batches, self.label_batches)):
           self.train_sentence(sentence, labels)
-          self.sentence_index= sentence_index
+          self.sentence_index = sentence_index
           if sentence_index > 0 and sentence_index % 1000 == 0:
             print(sentence_index)
             print(time.time() - last_time)
@@ -203,10 +203,11 @@ class DNN(DNNBase):
     trans_init_pos_indices = []
     trans_init_neg_indices = []
     for i in range(self.batch_size):
-      #current_label = self.viterbi(scores[:, :lengths[i], i], transition, transition_init,is_constraint=True)
-      current_label = self.viterbi_new(scores[:, :lengths[i], i], transition, transition_init,label_batches[i, :lengths[i]])
+      # current_label = self.viterbi(scores[:, :lengths[i], i], transition, transition_init,is_constraint=True)
+      current_label = self.viterbi_new(scores[:, :lengths[i], i], transition, transition_init,
+                                       label_batches[i, :lengths[i]])
       current_labels.append(current_label)
-      #print(current_label)
+      # print(current_label)
       diff_tag = np.subtract(label_batches[i, :lengths[i]], current_label)
       update_index = np.where(diff_tag != 0)[0]
       update_length = len(update_index)
@@ -243,28 +244,6 @@ class DNN(DNNBase):
         feed_dict[self.transition_init_current_holder] = trans_init_neg_indices
         self.sess.run(self.train_with_init,feed_dict)
       '''
-    # 更新转移矩阵
-    '''
-    transition_updates = None
-    transition_init_updates = None
-    for i in range(self.batch_size):
-      transition_update, transition_init_update, update_init = self.generate_transition_update(
-        label_batches[i, :lengths[i]], current_labels[i])
-      if transition_updates is not None:
-        transition_updates += transition_update
-      else:
-        transition_updates = transition_update
-      if update_init:
-        if transition_init_updates is not None:
-          transition_init_updates += transition_init_update
-        else:
-          transition_init_updates = transition_init_update
-
-    self.sess.run(self.update_transition, feed_dict={self.transition_holder: transition_updates / self.batch_size})
-    if transition_init_updates is not None:
-      feed_dict = {self.transition_init_holder: transition_init_updates / self.batch_size}
-      self.sess.run(self.update_transition_init, feed_dict)
-    '''
 
   def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False):
     self.saver.restore(self.sess, model_path)
