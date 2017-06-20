@@ -53,6 +53,7 @@ class PrepareData:
         self.labels_index = np.load('corpus/' + corpus + '_test_labels.npy')
       else:
         _, self.labels_index = self.build_dataset()
+        np.save('corpus/' + corpus + '_test_labels', self.labels_index)
     '''
     self.raw_sentences = list(map(lambda s: s.replace(self.SPLIT_CHAR, ''), self.sentences))
     leng = list(map(lambda s:len(s),self.raw_sentences))
@@ -144,7 +145,7 @@ class PrepareData:
     parts = self.sentences
     sentence_count = len(parts)
 
-    for part_index,part in enumerate(parts):
+    for part_index, part in enumerate(parts):
       length = 0
       real_length = 0
       character_batch = []
@@ -183,7 +184,7 @@ class PrepareData:
         label_batch.extend(extra)
         real_length = length
       if real_length == 1:
-        sentence_count -=1
+        sentence_count -= 1
         continue
       lengths.append(real_length)
       character_batches.append(character_batch)
@@ -220,4 +221,5 @@ class PrepareData:
 
 
 if __name__ == '__main__':
-  pre = PrepareData(4000, 'pku', mode=TrainMode.Batch)
+  PrepareData(4000, 'pku', mode=TrainMode.Batch)
+  PrepareData(4000, 'pku', type=CorpusType.Test)
