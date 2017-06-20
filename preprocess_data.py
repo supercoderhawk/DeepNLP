@@ -5,7 +5,7 @@ from config import CorpusType, TrainMode
 
 
 class PreprocessData:
-  def __init__(self, corpus, mode, type=CorpusType.Train):
+  def __init__(self, corpus, mode, type=CorpusType.Train,force_generate=True):
     self.skip_window_left = 0
     self.skip_window_right = 0
     self.window_size = self.skip_window_left + self.skip_window_right + 1
@@ -24,9 +24,9 @@ class PreprocessData:
       self.lengths = np.load(self.input_base + '_lengths.npy')
       self.output_base = 'corpus/dnn/' + corpus + '_training'
       self.ouput_suffix = '_' + str(self.skip_window_left) + '_' + str(self.skip_window_right)
-      if os.path.exists(self.output_base + '_character_batches' + self.ouput_suffix + '.npy'):
+      if os.path.exists(self.output_base + '_character_batches' + self.ouput_suffix + '.npy') and not force_generate:
         self.character_batches = np.load(self.output_base + '_character_batches' + self.ouput_suffix + '.npy')
-        self.label_batches = self.output_base + '_label_batches' + self.ouput_suffix + '.npy'
+        self.label_batches = np.load(self.output_base + '_label_batches' + self.ouput_suffix + '.npy')
       else:
         self.character_batches, self.label_batches = self.generate_batches()
         np.save(self.output_base + '_character_batches' + self.ouput_suffix, self.character_batches)
