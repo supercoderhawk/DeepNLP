@@ -12,7 +12,7 @@ class DNN(DNNBase):
   def __init__(self, type='mlp', batch_size=20, batch_length=300, mode=TrainMode.Batch, is_seg=False):
     DNNBase.__init__(self)
     # 参数初始化
-    self.dtype = tf.float32
+    self.dtype = tf.float64
     self.skip_window_left = 0
     self.skip_window_right = 0
     self.window_size = self.skip_window_left + self.skip_window_right + 1
@@ -22,7 +22,7 @@ class DNN(DNNBase):
     self.tags = [0, 1, 2, 3]
     self.tags_count = len(self.tags)
     self.concat_embed_size = self.window_size * self.embed_size
-    self.learning_rate = 0.2
+    self.learning_rate = 0.02
     self.lam = 0.0001
     self.batch_length = batch_length
     self.batch_size = batch_size
@@ -44,15 +44,23 @@ class DNN(DNNBase):
     self.label_index_correct = tf.placeholder(tf.int32, shape=[None, 2])
     self.label_index_current = tf.placeholder(tf.int32, shape=[None, 2])
     self.w = tf.Variable(
-      tf.truncated_normal([self.tags_count, self.hidden_units], stddev=1.0 / math.sqrt(self.concat_embed_size),
+      tf.truncated_normal([self.tags_count, self.hidden_units], stddev=4.0 / math.sqrt(self.concat_embed_size),
                           dtype=self.dtype), name='w')
     self.b = tf.Variable(tf.zeros([self.tags_count, 1], dtype=self.dtype), name='b')
-    self.transition = tf.Variable(tf.random_uniform([self.tags_count, self.tags_count], -0.05, 0.05, dtype=self.dtype))
-    self.transition_init = tf.Variable(tf.random_uniform([self.tags_count], -0.05, 0.05, dtype=self.dtype))
+    # self.transition = tf.Variable([[0.5,0.5,-0.5,-0.5],[-0.5,-0.5,0.5,0.5],[-0.5,-0.5,0.5,0.5],[0.5,0.5,-0.5,-0.5]],dtype=self.dtype)
+    trans_factor = tf.constant([[1,1,-1,-1],[-1,-1,1,1],[-1,-1,1,1],[1,1,-1,-1]],dtype=self.dtype)
+    trans_random = tf.random_uniform([self.tags_count, self.tags_count], 0, 0.2,dtype=self.dtype)
+    self.transition = tf.Variable(tf.multiply(trans_factor,trans_random))
+    #self.transition = tf.Variable(tf.random_uniform([self.tags_count, self.tags_count], -0.2, 0.2, dtype=self.dtype))
+    #self.transition_init = tf.Variable(tf.random_uniform([self.tags_count], -0.2, 0.2, dtype=self.dtype))
+    trans_init_factor = tf.constant([1,1,-1,-1],dtype=self.dtype)
+    trans_init_random = tf.random_uniform([self.tags_count],0,0.2,dtype=self.dtype)
+    self.transition_init = tf.Variable(tf.multiply(trans_init_factor,trans_init_random),dtype=self.dtype)
+    # self.transition_init = tf.Variable([1,1,0,0],dtype=self.dtype)
     self.transition_holder = tf.placeholder(self.dtype, shape=self.transition.get_shape())
     self.transition_init_holder = tf.placeholder(self.dtype, shape=self.transition_init.get_shape())
-    # self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
-    self.optimizer = tf.train.AdagradOptimizer(self.learning_rate)
+    #self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
+    self.optimizer = tf.train.AdagradOptimizer(0.4)
     # self.optimizer = tf.train.MomentumOptimizer(0.01,0.9)
     # self.optimizer = tf.train.AdamOptimizer(0.0001)#,beta1=0.1,beta2=0.001)
     self.update_transition = self.transition.assign(
@@ -63,12 +71,11 @@ class DNN(DNNBase):
              self.learning_rate * self.transition_init_holder))
     self.look_up = tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input), [-1, self.concat_embed_size])
     self.params = [self.w, self.b, self.embeddings]
-    # self.params = [self.w, self.embeddings]
     if type == 'mlp':
       self.input_embeds = tf.transpose(tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input),
                                                   [-1, self.concat_embed_size]))
       self.hidden_w = tf.Variable(
-        tf.random_uniform([self.hidden_units, self.concat_embed_size], -4.0 / math.sqrt(self.concat_embed_size),
+        tf.random_uniform([self.hidden_units, self.concat_embed_size], 4.0 / math.sqrt(self.concat_embed_size),
                           4 / math.sqrt(self.concat_embed_size), dtype=self.dtype), name='hidden_w')
       self.hidden_b = tf.Variable(tf.zeros([self.hidden_units, 1], dtype=self.dtype), name='hidden_b')
       self.word_scores = tf.matmul(self.w,
@@ -79,29 +86,18 @@ class DNN(DNNBase):
         tf.gather_nd(self.word_scores, self.label_index_correct)) + tf.contrib.layers.apply_regularization(
         tf.contrib.layers.l2_regularizer(self.lam), self.params)
     elif type == 'lstm':
-      # self.lstm = tf.contrib.rnn.LSTMCell(self.hidden_units)
       self.lstm = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_units)
       self.b = tf.Variable(tf.zeros([self.tags_count, 1, 1], dtype=self.dtype), name='b')
-      # self.lstm = tf.contrib.rnn.BasicRNNCell(self.hidden_units)
-      # self.lstm = tf.contrib.rnn.GRUCell(self.hidden_units)
       if self.mode == TrainMode.Batch:
         if not self.is_seg:
           self.lengths = pre.lengths
           self.input = tf.placeholder(tf.int32, shape=[self.batch_size, self.batch_length, self.window_size])
           self.input_embeds = tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input),
                                          [self.batch_size, self.batch_length, self.concat_embed_size])
-          # self.input_embeds = tf.layers.dropout(self.input_embeds,self.dropout_rate)
+          self.input_embeds = tf.layers.dropout(self.input_embeds, self.dropout_rate)
           self.lstm_output, self.lstm_out_state = tf.nn.dynamic_rnn(self.lstm, self.input_embeds, dtype=self.dtype)
           self.params += [v for v in tf.global_variables() if v.name.startswith('rnn')]
           self.word_scores = tf.tensordot(self.w, tf.transpose(self.lstm_output), [[1], [0]]) + self.b
-          # tf.reshape(
-          #  tf.tile(tf.squeeze(self.b), [self.batch_length * self.batch_size]),
-          #  [self.tags_count, self.batch_length, self.batch_size])
-          # self.w = tf.transpose(self.w)
-          # self.b = tf.transpose(self.b)
-          # self.word_scores = tf.transpose(
-          #  tf.matmul(tf.reshape(self.lstm_output, [-1, self.hidden_units]), self.w) + self.b)
-          # self.label_holder = tf.placeholder(tf.int32, shape=[self.batch_size, self.batch_length])
           self.label_index_correct = tf.placeholder(tf.int32, shape=[None, 3])
           self.label_index_current = tf.placeholder(tf.int32, shape=[None, 3])
           self.transition_correct_holder = tf.placeholder(tf.int32, [None, 2])
@@ -126,18 +122,23 @@ class DNN(DNNBase):
                                          [1, -1, self.concat_embed_size])
           self.lstm_output, self.lstm_out_state = tf.nn.dynamic_rnn(self.lstm, self.input_embeds, dtype=self.dtype)
           self.word_scores = tf.matmul(self.w, tf.transpose(self.lstm_output[-1, :, :])) + self.b[:, :, -1]
+
     if self.is_seg == False:
-      self.train = self.optimizer.minimize(self.loss)
+      gvs = self.optimizer.compute_gradients(self.loss)
+      cliped_grad = [(tf.clip_by_norm(grad, 5) if grad is not None else grad, var) for grad, var in gvs]
+      self.train = self.optimizer.apply_gradients(cliped_grad)  # self.optimizer.minimize(self.loss)
     if self.is_seg == False and self.type == 'lstm':
-      self.train_with_init = self.optimizer.minimize(self.loss_with_init)
-    # self.saver = tf.train.Saver(self.params + [self.transition, self.transition_init], max_to_keep=100)
+      gvs2 = self.optimizer.compute_gradients(self.loss_with_init)
+      cliped_grad2 = [(tf.clip_by_norm(grad2, 5) if grad2 is not None else grad2, var2) for grad2, var2 in gvs2]
+      self.train_with_init = self.optimizer.apply_gradients(cliped_grad2)
+      # self.train_with_init = self.optimizer.minimize(self.loss_with_init)
     self.saver = tf.train.Saver(max_to_keep=100)
     self.sentence_index = 0
 
   def train_exe(self):
     tf.global_variables_initializer().run(session=self.sess)
     self.sess.graph.finalize()
-    epoches = 20
+    epoches = 100
     last_time = time.time()
     if self.mode == TrainMode.Sentence:
       for i in range(epoches):
@@ -164,7 +165,7 @@ class DNN(DNNBase):
             print(batch_index)
             print(time.time() - last_time)
             last_time = time.time()
-        self.saver.save(self.sess, 'tmp/lstm-bmodel%d.ckpt' % i)
+        self.saver.save(self.sess, 'tmp/lstm-bbbmodel%d.ckpt' % i)
 
   def train_sentence(self, sentence, labels):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence})
@@ -191,8 +192,6 @@ class DNN(DNNBase):
 
   def train_batch(self, sentence_batches, label_batches, lengths):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence_batches})
-    # scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence_batches}).reshape(
-    #  [-1, self.batch_length, self.batch_size])
     transition = self.transition.eval(session=self.sess)
     transition_init = self.transition_init.eval(session=self.sess)
     update_labels_pos = None
@@ -203,20 +202,18 @@ class DNN(DNNBase):
     trans_init_pos_indices = []
     trans_init_neg_indices = []
     for i in range(self.batch_size):
-      # current_label = self.viterbi(scores[:, :lengths[i], i], transition, transition_init,is_constraint=True)
-      current_label = self.viterbi_new(scores[:, :lengths[i], i], transition, transition_init,
-                                       label_batches[i, :lengths[i]])
+      current_label = self.viterbi(scores[:, :lengths[i], i], transition, transition_init, is_constraint=True,
+                                   labels=label_batches[i, :lengths[i]])
+      # current_label = self.viterbi_new(scores[:, :lengths[i], i], transition, transition_init,
+      #                                 label_batches[i, :lengths[i]])
       current_labels.append(current_label)
-      # print(current_label)
       diff_tag = np.subtract(label_batches[i, :lengths[i]], current_label)
       update_index = np.where(diff_tag != 0)[0]
       update_length = len(update_index)
       if update_length == 0:
         continue
       update_label_pos = np.stack([label_batches[i, update_index], update_index, i * np.ones([update_length])], axis=-1)
-      # update_label_pos = np.stack([label_batches[i, update_index], i * self.batch_length + update_index], axis=-1)
       update_label_neg = np.stack([current_label[update_index], update_index, i * np.ones([update_length])], axis=-1)
-      # update_label_neg = np.stack([current_label[update_index], i * self.batch_length + update_index], axis=-1)
       if update_labels_pos is not None:
         np.concatenate((update_labels_pos, update_label_pos))
         np.concatenate((update_labels_neg, update_label_neg))
@@ -235,15 +232,14 @@ class DNN(DNNBase):
       feed_dict = {self.input: sentence_batches, self.label_index_current: update_labels_neg,
                    self.label_index_correct: update_labels_pos, self.transition_current_holder: trans_neg_indices,
                    self.transition_correct_holder: trans_pos_indices}
-      self.sess.run(self.train, feed_dict)
-      '''
+      # self.sess.run(self.train, feed_dict)
+
       if len(trans_init_pos_indices) == 0:
         self.sess.run(self.train, feed_dict)
       else:
-        feed_dict[self.transition_init_correct_holder]=trans_init_pos_indices
+        feed_dict[self.transition_init_correct_holder] = trans_init_pos_indices
         feed_dict[self.transition_init_current_holder] = trans_init_neg_indices
-        self.sess.run(self.train_with_init,feed_dict)
-      '''
+        self.sess.run(self.train_with_init, feed_dict)
 
   def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False):
     self.saver.restore(self.sess, model_path)
@@ -264,7 +260,7 @@ class DNN(DNNBase):
       print(self.transition_init.eval(session=self.sess))
       # print(self.b.eval(session=self.sess))
       # print(self.w.eval(session=self.sess))
-    current_labels = self.viterbi_new(sentence_scores, transition, transition_init)
+    current_labels = self.viterbi(sentence_scores, transition, transition_init ,is_constraint=True)
     return self.tags2words(sentence, current_labels), current_labels
 
 
