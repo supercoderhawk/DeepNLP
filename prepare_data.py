@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 
 class PrepareData:
-  def __init__(self, vocab_size, corpus, batch_length=40, batch_size=20, dict_path=None, mode=TrainMode.Batch,
+  def __init__(self, vocab_size, corpus, batch_length=300, batch_size=20, dict_path=None, mode=TrainMode.Batch,
                type=CorpusType.Train):
     self.vocab_size = vocab_size
     self.dict_path = dict_path
@@ -53,6 +53,12 @@ class PrepareData:
         self.labels_index = np.load('corpus/' + corpus + '_test_labels.npy')
       else:
         _, self.labels_index = self.build_dataset()
+    '''
+    self.raw_sentences = list(map(lambda s: s.replace(self.SPLIT_CHAR, ''), self.sentences))
+    leng = list(map(lambda s:len(s),self.raw_sentences))
+    leng.sort()
+    self.plot_lengths(leng)
+    '''
 
   def read_sentences(self):
     file = open(self.input_file, 'r', encoding='utf-8')
@@ -127,15 +133,18 @@ class PrepareData:
     lengths = []
     parts = []
     unknown = 4
+    '''
     for line in self.sentences:
       sentences = line.split('。')
-      sections = list(map(lambda s: s.strip().split(','), sentences))
+      sections =sentences
+      #sections = list(map(lambda s: s.strip().split(','), sentences))
       sections = list(filter(lambda s: len(s) > 0, list(map(lambda s: s.strip(), [j for i in sections for j in i]))))
       parts.extend(sections)
-
+    '''
+    parts = self.sentences
     sentence_count = len(parts)
 
-    for part in parts:
+    for part_index,part in enumerate(parts):
       length = 0
       real_length = 0
       character_batch = []
@@ -173,7 +182,9 @@ class PrepareData:
         character_batch.extend(extra)
         label_batch.extend(extra)
         real_length = length
-
+      if real_length == 1:
+        sentence_count -=1
+        continue
       lengths.append(real_length)
       character_batches.append(character_batch)
       label_batches.append(label_batch)
@@ -200,7 +211,7 @@ class PrepareData:
         j = 0
         pre_i = i
 
-    print(len(list(filter(lambda l: l > self.batch_length, lengths))))
+    print(len(list(filter(lambda l: l > 300, lengths))))
     print(len(lengths))
     x = range(len(count))
     plt.plot(x, count)
