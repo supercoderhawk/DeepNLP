@@ -12,7 +12,7 @@ class DNNBase(Base):
     self.skip_window_right = 1
     self.hinge_discount = 0.2
 
-  def viterbi(self, emission, A, init_A, return_score=False):
+  def viterbi(self, emission, A, init_A, return_score=False, is_constraint=False, labels=None):
     """
     维特比算法的实现，所有输入和返回参数均为numpy数组对象
     :param emission: 发射概率矩阵，对应于本模型中的分数矩阵，4*length
@@ -22,16 +22,28 @@ class DNNBase(Base):
     :return: 最优路径，若return_score为True，返回最优路径及其对应分值
     """
 
+    constraint = [[0, 1], [2, 3], [2, 3], [0, 1]]
     length = emission.shape[1]
     path = np.ones([self.tags_count, length], dtype=np.int32) * -1
     corr_path = np.zeros([length], dtype=np.int32)
     path_score = np.ones([self.tags_count, length], dtype=np.float64) * (np.finfo('f').min / 2)
     path_score[:, 0] = init_A + emission[:, 0]
 
+    if labels is not None:
+      for i in range(4):
+        if i != labels[0]:
+          path_score[i, 0] += self.hinge_discount
+
     for pos in range(1, length):
       for t in range(self.tags_count):
         for prev in range(self.tags_count):
+          if is_constraint:
+            if t not in constraint[prev]:
+              continue
           temp = path_score[prev][pos - 1] + A[prev][t] + emission[t][pos]
+          if labels is not None:
+            if t != labels[pos]:
+              temp += self.hinge_discount
           if temp >= path_score[t][pos]:
             path[t][pos] = prev
             path_score[t][pos] = temp
@@ -46,32 +58,32 @@ class DNNBase(Base):
     else:
       return corr_path
 
-  def viterbi_new(self,emission,transition,transition_init,labels=None):
+  def viterbi_new(self, emission, transition, transition_init, labels=None):
     constraint = [[0, 1], [2, 3], [2, 3], [0, 1]]
     length = emission.shape[1]
-    path = np.ones([self.tags_count, length+1], dtype=np.int32) * -1
+    path = np.ones([self.tags_count, length + 1], dtype=np.int32) * -1
     corr_path = np.zeros([length], dtype=np.int32)
-    path_score = np.ones([self.tags_count, length+1], dtype=np.float64) * (np.finfo('f').min / 2)
+    path_score = np.ones([self.tags_count, length + 1], dtype=np.float64) * (np.finfo('f').min / 2)
     # path_score[:, 0] = transition_init + emission[:, 0]
-    path_score[0,0] = 0
+    path_score[0, 0] = 0
 
-    for pos in range(1,length+1):
+    for pos in range(1, length + 1):
       for path_index in range(self.tags_count):
         for curr_label in constraint[path_index]:
-          tmp = path_score[path_index,pos-1]+emission[curr_label,pos-1]+transition[path_index,curr_label]
+          tmp = path_score[path_index, pos - 1] + emission[curr_label, pos - 1] + transition[path_index, curr_label]
           if labels is not None:
-            if curr_label != labels[pos-1]:
+            if curr_label != labels[pos - 1]:
               tmp += self.hinge_discount
-          if tmp > path_score[curr_label,pos]:
-            path_score[curr_label,pos] = tmp
-            path[curr_label,pos] = path_index
+          if tmp > path_score[curr_label, pos]:
+            path_score[curr_label, pos] = tmp
+            path[curr_label, pos] = path_index
 
-    #print(path)
-    #print(path_score)
+    # print(path)
+    # print(path_score)
     max_index = np.argmax(path_score[:, -1])
     corr_path[length - 1] = max_index
     for i in range(length - 1, 0, -1):
-      max_index = path[max_index][i+1]
+      max_index = path[max_index][i + 1]
       corr_path[i - 1] = max_index
     return corr_path
 
