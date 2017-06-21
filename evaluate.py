@@ -37,7 +37,7 @@ def estimate_cws(current_labels, correct_labels):
 
 def evaluate_mlp():
   cws = DNN('mlp')
-  model = 'tmp/mlp-model9.ckpt'
+  model = 'tmp/mlp-model3.ckpt'
   print(cws.seg('小明来自南京师范大学', model, debug=True))
   print(cws.seg('小明是上海理工大学的学生', model))
   print(cws.seg('迈向充满希望的新世纪', model))
@@ -47,7 +47,7 @@ def evaluate_mlp():
 
 def evaluate_lstm():
   cws = DNN('lstm', is_seg=True)
-  model = 'tmp/lstm-bmodel5.ckpt'
+  model = 'tmp/lstm-model1.ckpt'
   print(cws.seg('小明来自南京师范大学', model, debug=True))
   print(cws.seg('小明是上海理工大学的学生', model))
   print(cws.seg('迈向充满希望的新世纪', model))
