@@ -37,30 +37,27 @@ class DNN(DNNBase):
     self.dictionary = pre.dictionary
     # 模型定义和初始化
     self.sess = tf.Session()
-    self.embeddings = tf.Variable(
-      tf.truncated_normal([self.vocab_size, self.embed_size], stddev=5.0 / math.sqrt(self.embed_size),
-                          dtype=self.dtype), name='embeddings')
+    #self.embeddings = tf.Variable(
+    #  tf.truncated_normal([self.vocab_size, self.embed_size], stddev=1.0 / math.sqrt(self.embed_size),
+    #                      dtype=self.dtype), name='embeddings')
+    initializer = tf.contrib.layers.xavier_initializer(dtype=self.dtype)
+    self.embeddings = tf.get_variable('embeddings',[self.vocab_size, self.embed_size],dtype=self.dtype,initializer=initializer)
     self.input = tf.placeholder(tf.int32, shape=[None, self.window_size])
     self.label_index_correct = tf.placeholder(tf.int32, shape=[None, 2])
     self.label_index_current = tf.placeholder(tf.int32, shape=[None, 2])
-    self.w = tf.Variable(
-      tf.truncated_normal([self.tags_count, self.hidden_units], stddev=4.0 / math.sqrt(self.concat_embed_size),
-                          dtype=self.dtype), name='w')
+    #self.w = tf.Variable(
+    #  tf.truncated_normal([self.tags_count, self.hidden_units], stddev=1.0 / math.sqrt(self.concat_embed_size),
+    #                      dtype=self.dtype), name='w')
+    self.w = tf.get_variable('w',[self.tags_count, self.hidden_units],dtype=self.dtype,initializer=initializer)
     self.b = tf.Variable(tf.zeros([self.tags_count, 1], dtype=self.dtype), name='b')
-    # self.transition = tf.Variable([[0.5,0.5,-0.5,-0.5],[-0.5,-0.5,0.5,0.5],[-0.5,-0.5,0.5,0.5],[0.5,0.5,-0.5,-0.5]],dtype=self.dtype)
-    trans_factor = tf.constant([[1,1,-1,-1],[-1,-1,1,1],[-1,-1,1,1],[1,1,-1,-1]],dtype=self.dtype)
-    trans_random = tf.random_uniform([self.tags_count, self.tags_count], 0, 0.2,dtype=self.dtype)
-    self.transition = tf.Variable(tf.multiply(trans_factor,trans_random))
     #self.transition = tf.Variable(tf.random_uniform([self.tags_count, self.tags_count], -0.2, 0.2, dtype=self.dtype))
     #self.transition_init = tf.Variable(tf.random_uniform([self.tags_count], -0.2, 0.2, dtype=self.dtype))
-    trans_init_factor = tf.constant([1,1,-1,-1],dtype=self.dtype)
-    trans_init_random = tf.random_uniform([self.tags_count],0,0.2,dtype=self.dtype)
-    self.transition_init = tf.Variable(tf.multiply(trans_init_factor,trans_init_random),dtype=self.dtype)
-    # self.transition_init = tf.Variable([1,1,0,0],dtype=self.dtype)
+    self.transition = tf.get_variable('transition',[self.tags_count, self.tags_count],dtype=self.dtype,initializer=initializer)
+    self.transition_init = tf.get_variable('transition_init',[self.tags_count],dtype=self.dtype,initializer=initializer)
     self.transition_holder = tf.placeholder(self.dtype, shape=self.transition.get_shape())
     self.transition_init_holder = tf.placeholder(self.dtype, shape=self.transition_init.get_shape())
     #self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
-    self.optimizer = tf.train.AdagradOptimizer(0.4)
+    self.optimizer = tf.train.AdagradOptimizer(0.5)
     # self.optimizer = tf.train.MomentumOptimizer(0.01,0.9)
     # self.optimizer = tf.train.AdamOptimizer(0.0001)#,beta1=0.1,beta2=0.001)
     self.update_transition = self.transition.assign(
@@ -133,12 +130,13 @@ class DNN(DNNBase):
       self.train_with_init = self.optimizer.apply_gradients(cliped_grad2)
       # self.train_with_init = self.optimizer.minimize(self.loss_with_init)
     self.saver = tf.train.Saver(max_to_keep=100)
+    # self.saver.restore(self.sess, 'tmp/lstm-bbbmodel6.ckpt')
     self.sentence_index = 0
 
   def train_exe(self):
     tf.global_variables_initializer().run(session=self.sess)
     self.sess.graph.finalize()
-    epoches = 100
+    epoches = 200
     last_time = time.time()
     if self.mode == TrainMode.Sentence:
       for i in range(epoches):
@@ -165,7 +163,7 @@ class DNN(DNNBase):
             print(batch_index)
             print(time.time() - last_time)
             last_time = time.time()
-        self.saver.save(self.sess, 'tmp/lstm-bbbmodel%d.ckpt' % i)
+        self.saver.save(self.sess, 'tmp/lstm-model%d.ckpt' % i)
 
   def train_sentence(self, sentence, labels):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence})
@@ -250,12 +248,14 @@ class DNN(DNNBase):
     if debug:
       print(transition)
       embeds = self.sess.run(self.look_up, feed_dict={self.input: seq})
+      print(embeds[1])
       if self.type == 'lstm':
         output = self.sess.run(self.lstm_output, feed_dict={self.input: seq})
         print(output[-1, :, 10])
-      print(sentence_scores.T)
-      b = self.b.eval(session=self.sess)
-      print(b)
+      #print(sentence_scores.T)
+      #b = self.b.eval(session=self.sess)
+      #print(b)
+      #print(self.w.eval(session=self.sess))
       # print(self.params[2].eval(session=self.sess))
       print(self.transition_init.eval(session=self.sess))
       # print(self.b.eval(session=self.sess))
