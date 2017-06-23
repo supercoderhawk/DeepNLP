@@ -10,6 +10,7 @@ class DNNBase(Base):
     self.dictionary = None
     self.skip_window_left = 1
     self.skip_window_right = 1
+    self.window_size = self.skip_window_left + self.skip_window_right + 1
     self.hinge_discount = 0.2
 
   def viterbi(self, emission, A, init_A, return_score=False, is_constraint=False, labels=None):
