@@ -1,16 +1,33 @@
 # -*- coding: UTF-8 -*-
 import os
 import numpy as np
+from collections import OrderedDict
 
 
 class PrepareDataNer():
-  def __init__(self):
-    self.labels_dict = {'O': 0, 'B': 1, 'I': 2}
+  def __init__(self, batch_length=225, batch_size=10):
+    self.labels_dict = {'O': 0, 'B': 1, 'I': 2, 'P': 3}
+    self.categories = {'Sign': 'SN', 'Symptom': 'SYM', 'Part': 'PT', 'Property': 'PTY', 'Degree': 'DEG',
+                       'Quality': 'QLY', 'Quantity': 'QNY', 'Unit': 'UNT', 'Time': 'T', 'Date': 'DT', 'Result': 'RES',
+                       'Disease': 'DIS', 'DiseaseType': 'DIT', 'Examination': 'EXN', 'Location': 'LOC',
+                       'Medicine': 'MED', 'Spec': 'SPEC', 'Usage': 'USG', 'Dose': 'DSE', 'Treatment': 'TRT',
+                       'Family': 'FAM',
+                       'Modifier': 'MOF'}
+    self.category_labels_dict = OrderedDict({'O': 0})
+    category_index = 1
+    for category in self.categories:
+      self.category_labels_dict[self.categories[category] + '_B'] = category_index
+      category_index += 1
+      self.category_labels_dict[self.categories[category] + '_O'] = category_index
+      category_index += 1
+    self.category_labels_dict['P'] = category_index
     self.labels_count = len(self.labels_dict)
     self.base_folder = 'corpus/emr/'
     self.filenames = []
     self.ext_dict_path = ['corpus/msr_dict.utf8', 'corpus/pku_dict.utf8']
     self.dict_path = 'corpus/emr_dict.utf8'
+    self.batch_length = batch_length
+    self.batch_size = batch_size
     for _, _, filenames in os.walk(self.base_folder):
       for filename in filenames:
         filename, _ = os.path.splitext(filename)
@@ -18,9 +35,16 @@ class PrepareDataNer():
           self.filenames.append(filename)
     self.annotation = self.read_annotation_files()
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
-    self.character_batches, self.label_batches = self.build_dataset()
-    np.save('corpus/emr_training_characters', self.character_batches)
-    np.save('corpus/emr_training_labels', self.label_batches)
+    self.characters, self.labels = self.build_dataset(True)
+    np.save('corpus/emr_training_characters', self.characters)
+    np.save('corpus/emr_training_labels', self.labels)
+    extra_count = len(self.characters) % self.batch_size
+    lengths = np.array(list(map(lambda item: len(item), self.characters[:-extra_count])), np.int32).reshape(
+      [-1, self.batch_size])
+    np.save('corpus/emr_training_lengths', lengths)
+    self.character_batches, self.label_batches = self.build_batch()
+    np.save('corpus/emr_training_character_batches', self.character_batches)
+    np.save('corpus/emr_training_label_batches', self.label_batches)
 
   def read_annotation_files(self):
     annotation = {}
@@ -42,7 +66,7 @@ class PrepareDataNer():
     content = ''
     for filename in self.filenames:
       content += self.annotation[filename]['raw']
-    print(len(list(content)) / 1024)
+    # print(len(list(content)) / 1024)
     characters.extend(list(content.replace('\r\n', '')))
     characters = list(filter(lambda ch: ch != 'UNK' and ch != 'STRT' and ch != 'END', set(characters)))
     dictionary['UNK'] = 0
@@ -67,7 +91,7 @@ class PrepareDataNer():
     dict_file.close()
     return dictionary
 
-  def build_dataset(self):
+  def build_dataset(self, category=False):
     rn = ['\r', '\n']
     seg = [self.dictionary['。']]
     characters_index = []
@@ -95,11 +119,19 @@ class PrepareDataNer():
           sections = annotation.split(' ')
           start = int(sections[2])
           end = int(sections[3])
-          if len(sections[4]) == 1:
-            label[start] = self.labels_dict['B']
-          elif len(sections[4]) > 1:
-            label[start] = self.labels_dict['B']
-            label[start + 1:end] = [self.labels_dict['I']] * (end - start - 1)
+          if category:
+            type = sections[1]
+            if len(sections[4]) == 1:
+              label[start] = self.category_labels_dict[self.categories[type] + '_B']
+            else:
+              label[start] = self.category_labels_dict[self.categories[type] + '_B']
+              label[start + 1:end] = [self.category_labels_dict[self.categories[type] + '_O']] * (end - start - 1)
+          else:
+            if len(sections[4]) == 1:
+              label[start] = self.labels_dict['B']
+            elif len(sections[4]) > 1:
+              label[start] = self.labels_dict['B']
+              label[start + 1:end] = [self.labels_dict['I']] * (end - start - 1)
 
       # 处理回车
       if len(rn_index) != 0:
@@ -120,18 +152,32 @@ class PrepareDataNer():
         characters_index.append(np.array(character_index[cur_index:latter_index], dtype=np.int32))
         labels.append(np.array(label[cur_index:latter_index], dtype=np.int32))
 
-        # characters_index.append(np.array(character_index,np.int32))
-        # labels.append(np.array(label,np.int32))
-    for i,chs in enumerate(characters_index):
+    for i, chs in enumerate(characters_index):
       sentence = ''
       for ch in chs:
         sentence += self.reverse_dictionary[ch]
-      print(sentence)
-      print(labels[i])
     return np.array(characters_index), np.array(labels)
 
-  def build_batch(self):
-    pass
+  def build_batch(self, category=False):
+    characters = []
+    labels = []
+    for line_characters, line_labels in zip(self.characters, self.labels):
+      length = len(line_characters)
+      if length >= self.batch_length:
+        characters.append(line_characters[:self.batch_length])
+        labels.append(line_labels[:self.batch_length])
+      else:
+        characters.append(line_characters.tolist() + [0] * (self.batch_length - length))
+        if category:
+          labels.append(line_labels.tolist() + [self.category_labels_dict['P']] * (self.batch_length - length))
+        else:
+          labels.append(line_labels.tolist() + [self.labels_dict['P']] * (self.batch_length - length))
+
+    extra_count = len(characters) % self.batch_size
+    characters = np.array(characters[:-extra_count], np.int32).reshape([-1, self.batch_size, self.batch_length])
+    labels = np.array(labels[:-extra_count], np.int32).reshape([-1, self.batch_size, self.batch_length])
+    return characters, labels
+
 
 if __name__ == '__main__':
   PrepareDataNer()
