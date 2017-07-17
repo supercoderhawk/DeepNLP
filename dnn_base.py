@@ -1,6 +1,7 @@
 # -*- coding: UTF-8 -*-
 import numpy as np
 from base import Base
+from collections import OrderedDict
 
 
 class DNNBase(Base):
@@ -12,6 +13,29 @@ class DNNBase(Base):
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
     self.hinge_discount = 0.2
+    self.reverse_categories, self.category_reverse_dict, self.zh_categories = self.init_categories()
+
+  def init_categories(self):
+    categories = {'Sign': 'SN', 'Symptom': 'SYM', 'Part': 'PT', 'Property': 'PTY', 'Degree': 'DEG',
+                  'Quality': 'QLY', 'Quantity': 'QNY', 'Unit': 'UNT', 'Time': 'T', 'Date': 'DT', 'Result': 'RES',
+                  'Disease': 'DIS', 'DiseaseType': 'DIT', 'Examination': 'EXN', 'Location': 'LOC',
+                  'Medicine': 'MED', 'Spec': 'SPEC', 'Usage': 'USG', 'Dose': 'DSE', 'Treatment': 'TRT',
+                  'Family': 'FAM', 'Modifier': 'MOF'}
+    zh_categories = {'Sign': '体征', 'Symptom': '症状', 'Part': '部位', 'Property': '性质', 'Degree': '程度',
+                     'Quality': '定性值', 'Quantity': '定量值', 'Unit': '单位', 'Time': '时间', 'Date': '日期', 'Result': '结果',
+                     'Disease': '疾病', 'DiseaseType': '疾病分型分歧', 'Examination': '检查', 'Location': '机构',
+                     'Medicine': '药物', 'Spec': '规格', 'Usage': '用法', 'Dose': '用量', 'Treatment': '治疗',
+                     'Family': '家族成员', 'Modifier': '其他修饰词'}
+    category_labels_dict = OrderedDict({'O': 0})
+    category_index = 1
+    for category in categories:
+      category_labels_dict[categories[category] + '_B'] = category_index
+      category_index += 1
+      category_labels_dict[categories[category] + '_O'] = category_index
+      category_index += 1
+    category_labels_dict['P'] = category_index
+    return OrderedDict(zip(categories.values(), categories.keys())), OrderedDict(
+      zip(category_labels_dict.values(), category_labels_dict.keys())), zh_categories
 
   def viterbi(self, emission, A, init_A, return_score=False, is_constraint=False, labels=None):
     """
@@ -178,3 +202,36 @@ class DNNBase(Base):
       words.append(word)
 
     return words
+
+  def tags2entities(self, sentence, tags):
+    entities = []
+    entity = ''
+    for tag_index, tag in enumerate(tags):
+      if tag == 0:
+        continue
+      elif tag == 1:
+        entities.append(entity)
+        entity = sentence[tag_index]
+      else:
+        entity += sentence[tag_index]
+    if entity != '':
+      entities.append(entity)
+    return entities
+
+  def tags2category_entities(self, sentence, tags):
+    entities = []
+    entity = ''
+    category = ''
+    for tag_index, tag in enumerate(tags):
+      type = self.category_reverse_dict[tag]
+      if tag == 0:
+        continue
+      elif type[-1] == 'B':
+        entities.append(entity + '/' + category)
+        entity = sentence[tag_index]
+        category = self.zh_categories[self.reverse_categories[type[:-2]]]
+      else:
+        entity += sentence[tag_index]
+    if entity != '':
+      entities.append(entity + '/' + category)
+    return entities
