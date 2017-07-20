@@ -127,12 +127,14 @@ class PrepareDataNer():
     dict_file.close()
     return dictionary
 
-  def build_dataset(self, entity_category=False, relation_category=False):
+  def build_dataset(self, is_entity_category=False, is_relation_category=False, is_negative_relation=True):
     rn = ['\r', '\n']
     seg = [self.dictionary['。']]
     characters_index = []
     entity_labels = []
     relations = []
+    pos = 0
+    neg = 0
 
     for filename in self.filenames:
       raw_text = self.annotation[filename]['raw']
@@ -140,7 +142,7 @@ class PrepareDataNer():
       character_index = []
       entity_label = [self.entity_tags['O']] * len(raw_text)
       rn_index = []
-      entity_index = [0] * len(raw_text)
+      entity_index = [0] * len(raw_text)  # 实体索引，在实体每个字符标为实体的编号，其他地方为0
       relation = {}
       primary_entity = []
       seg_index = [0]
@@ -159,7 +161,7 @@ class PrepareDataNer():
         content = entity_annotation['content']
         type = entity_annotation['category']
         entity_index[start:end] = [entity_annotation['id']] * (end - start)
-        if entity_category:
+        if is_entity_category:
           entity_label[start] = self.entity_category_labels[self.entity_categories[type] + '_B']
           if len(content) > 1:
             entity_label[start + 1:end] = [self.entity_category_labels[self.entity_categories[type] + '_O']] * (
@@ -193,14 +195,16 @@ class PrepareDataNer():
       for cur_index, latter_index in zip(seg_index[:-1], seg_index[1:]):
         characters_index.append(np.array(character_index[cur_index:latter_index], dtype=np.int32))
         entity_labels.append(np.array(entity_label[cur_index:latter_index], dtype=np.int32))
-        entity_start = {}
+        entity_start = {}  # 每个句子中所有实体字典，键为实体id，值为实体开头字符在句子中的位置
+        positive_relation = []  # 关系的'hash'
         for ii, i in enumerate(entity_index[cur_index:latter_index]):
           if i != 0 and entity_start.get(i) is None:
             entity_start[i] = ii
+        arr = np.arange(0, latter_index - cur_index) + self.batch_length - 1  # 位置索引baseline
         for entity_id in [e for e in entity_start if e in primary_entity]:
           secondary = relation[entity_id][0]
           type = relation[entity_id][1]
-          if relation_category:
+          if is_relation_category:
             relation_label = [0] * self.relation_category_label_count
             relation_label[self.relation_category_labels[type]] = 1
           else:
@@ -209,12 +213,31 @@ class PrepareDataNer():
           primary_start = entity_start[entity_id]
           if entity_start.get(secondary) is not None:
             secondary_start = entity_start[secondary]
-            arr = np.arange(0, latter_index - cur_index) + self.batch_length - 1
             relation_item = {'sentence': np.array(character_index[cur_index:latter_index], dtype=np.int32),
                              'primary': arr - primary_start, 'secondary': arr - secondary_start,
                              'label': relation_label}
             relations.append(relation_item)
 
+            positive_relation.append(entity_id + ':' + secondary)
+        pos += len(positive_relation)
+        entities = list(entity_start.keys())
+        if is_negative_relation:
+          for entity_i, entity in enumerate(entities):
+            secondaries = [s for s in entities[:entity_i] + entities[entity_i + 1:] if
+                           entity + ':' + s not in positive_relation]
+            primary_start = entity_start[entity]
+            neg += len(secondaries)
+            for s in secondaries:
+              if is_relation_category:
+                relation_label = [0] * self.relation_category_label_count
+                relation_label[self.relation_category_labels['NoRelation']] = 1
+              else:
+                relation_label = [1, 0]
+              relation_item = {'sentence': np.array(character_index[cur_index:latter_index], dtype=np.int32),
+                               'primary': arr - primary_start, 'secondary': arr - entity_start[s],
+                               'label': relation_label}
+              relations.append(relation_item)
+    print(neg / (pos + neg))
     for i, chs in enumerate(characters_index):
       sentence = ''
       for ch in chs:
