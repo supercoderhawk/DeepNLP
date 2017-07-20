@@ -13,12 +13,14 @@ class RECNN():
     self.batch_length = batch_length
     self.batch_size = batch_size
     self.learning_rate = 0.01
+    self.lam = 0.0005
     self.character_embed_size = 50
     self.position_embed_size = 50
     self.dict_path = 'corpus/emr_dict.utf8'
     self.dictionary = self.read_dictionary()
     self.character_size = len(self.dictionary)
     self.batch_path = 'corpus/emr_relation_batches.rel'
+    self.output_folder = 'tmp/re/'
     self.concat_embed_size = self.character_embed_size + 2 * self.position_embed_size
     self.batches = self.load_batches()
     self.input_characters = tf.placeholder(tf.int32, [self.batch_size, self.batch_length])
@@ -30,6 +32,7 @@ class RECNN():
     self.conv_kernel = self.weight_variable([self.window_size, self.concat_embed_size, 1, self.filter_size])
     self.bias = tf.Variable(0.1, dtype=self.dtype)
     self.full_connected_weight = self.weight_variable([self.filter_size, self.relation_count])
+    self.full_connected_bias = self.weight_variable([self.relation_count])
     self.position_lookup = tf.nn.embedding_lookup(self.position_embedding, self.input_position)
     self.character_lookup = tf.nn.embedding_lookup(self.character_embedding, self.input_characters)
     self.character_embed_holder = tf.placeholder(self.dtype,
@@ -41,10 +44,14 @@ class RECNN():
     self.emebd_concat = tf.expand_dims(
       tf.concat([self.character_embed_holder, self.primary_embed_holder, self.secondary_embed_holder], 2), 3)
     self.hidden_layer = tf.squeeze(self.max_pooling(tf.nn.relu(self.conv() + self.bias)))
-    self.output = tf.nn.softmax(tf.matmul(self.hidden_layer, self.full_connected_weight))
-    self.loss = tf.reduce_sum(tf.square(self.output - self.input_relation))
+    self.output = tf.nn.softmax(tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias)
+    self.params = [self.position_embedding, self.character_embedding, self.conv_kernel, self.bias,
+                   self.full_connected_weight, self.full_connected_bias]
+    self.regularization = tf.contrib.layers.apply_regularization(tf.contrib.layers.l2_regularizer(self.lam),self.params)
+    self.loss = tf.reduce_sum(tf.square(self.output - self.input_relation)) / self.batch_size + self.regularization
     self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
     self.train_model = self.optimizer.minimize(self.loss)
+    self.saver = tf.train.Saver(max_to_keep=100)
 
   def weight_variable(self, shape):
     initial = tf.truncated_normal(shape, stddev=0.1, dtype=self.dtype)
@@ -73,6 +80,7 @@ class RECNN():
                                                          self.primary_embed_holder: primary_embeds,
                                                          self.secondary_embed_holder: secondary_embeds})
           sess.run(self.train_model, feed_dict={self.input: input, self.input_relation: batch['label']})
+        self.saver.save(sess, self.output_folder + 'cnn_model%d.ckpt' % i)
 
   def load_batches(self):
     with open(self.batch_path, 'rb') as f:
@@ -89,7 +97,31 @@ class RECNN():
     dict_file.close()
     return dictionary
 
+  def test(self):
+    with tf.Session() as sess:
+      self.saver.restore(sess, self.output_folder + 'cnn_model9.ckpt')
+      neg = 0
+      all = 0
+      # print(self.batches[0])
+      for i in range(500):
+        batch = self.batches[i]
+        character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],
+                                                    feed_dict={self.input_characters: batch['sentence'],
+                                                               self.input_position: batch['primary']})
+        secondary_embeds = sess.run(self.position_lookup, feed_dict={self.input_position: batch['secondary']})
+        input = sess.run(self.emebd_concat, feed_dict={self.character_embed_holder: character_embeds,
+                                                       self.primary_embed_holder: primary_embeds,
+                                                       self.secondary_embed_holder: secondary_embeds})
+        output = sess.run(self.output, feed_dict={self.input: input})
+        neg += np.count_nonzero(np.argmax(output, 1) - np.argmax(batch['label'], 1))
+        if np.sum(np.argmax(output, 1)) > 0:
+          print('a')
+        all += self.batch_size
+      prec = 1 - neg / all
+      print(prec)
+
 
 if __name__ == '__main__':
   reCNN = RECNN()
-  reCNN.train()
+  # reCNN.train()
+  reCNN.test()
