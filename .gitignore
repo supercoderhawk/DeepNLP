@@ -106,4 +106,5 @@ corpus/*
 !corpus/msr_training.utf8
 !corpus/pku_training.utf8
 !corpus/pku_test.utf8
+!corpus/msr_ner_training.utf8
 tmp/
