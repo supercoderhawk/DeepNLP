@@ -107,4 +107,5 @@ corpus/*
 !corpus/pku_training.utf8
 !corpus/pku_test.utf8
 !corpus/msr_ner_training.utf8
+!corpus/semeval_relation.utf8
 tmp/
