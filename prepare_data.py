@@ -179,8 +179,8 @@ class PrepareData:
       [-1, self.batch_size, self.batch_length])
     label_batches = np.array(label_batches[:-extra_count], dtype=np.int32).reshape(
       [-1, self.batch_size, self.batch_length])
-    sentence_lengths = np.array(lengths[:-extra_count], dtype=np.int32).reshape([-1, self.batch_size])
-    return sentence_batches, label_batches, sentence_lengths, sentences, labels, lengths
+    lengths = np.array(lengths[:-extra_count], dtype=np.int32).reshape([-1, self.batch_size])
+    return sentence_batches, label_batches, lengths, sentences, labels, sentence_lengths
 
   def plot_lengths(self, lengths):
     pre_i = lengths[0]
