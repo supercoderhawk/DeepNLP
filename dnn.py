@@ -9,19 +9,19 @@ from config import TrainMode
 
 
 class DNN(DNNBase):
-  def __init__(self, type='mlp', batch_size=10, batch_length=225, mode=TrainMode.Batch, is_seg=False):
+  def __init__(self, type='mlp', batch_size=50, batch_length=100, mode=TrainMode.Batch, is_seg=False):
     DNNBase.__init__(self)
     # 参数初始化
     self.dtype = tf.float64
     self.skip_window_left = 1
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
-    self.vocab_size = 4000
+    # self.vocab_size = 4000
     self.embed_size = 50
     self.hidden_units = 150
-    #self.tags = [0, 1, 2, 3]
-    #self.tags = [0, 1, 2]
-    self.tags_count = 45 #len(self.tags)
+    self.tags = [0, 1, 2, 3]
+    # self.tags = [0, 1, 2]
+    self.tags_count = len(self.tags)
     self.concat_embed_size = self.window_size * self.embed_size
     self.learning_rate = 0.01
     self.lam = 0.0001
@@ -32,34 +32,37 @@ class DNN(DNNBase):
     self.is_seg = is_seg
     self.dropout_rate = 0.2
     # 数据初始化
-    pre = PreprocessData('emr', self.mode)
+    pre = PreprocessData('pku', self.mode)
     self.character_batches = pre.character_batches
     self.label_batches = pre.label_batches
     self.dictionary = pre.dictionary
     self.vocab_size = len(self.dictionary)
     # 模型定义和初始化
     self.sess = tf.Session()
-    #self.embeddings = tf.Variable(
+    # self.embeddings = tf.Variable(
     #  tf.truncated_normal([self.vocab_size, self.embed_size], stddev=1.0 / math.sqrt(self.embed_size),
     #                      dtype=self.dtype), name='embeddings')
     initializer = tf.contrib.layers.xavier_initializer(dtype=self.dtype)
-    self.embeddings = tf.get_variable('embeddings',[self.vocab_size, self.embed_size],dtype=self.dtype,initializer=initializer)
+    self.embeddings = tf.get_variable('embeddings', [self.vocab_size, self.embed_size], dtype=self.dtype,
+                                      initializer=initializer)
     self.input = tf.placeholder(tf.int32, shape=[None, self.window_size])
     self.label_index_correct = tf.placeholder(tf.int32, shape=[None, 2])
     self.label_index_current = tf.placeholder(tf.int32, shape=[None, 2])
-    #self.w = tf.Variable(
+    # self.w = tf.Variable(
     #  tf.truncated_normal([self.tags_count, self.hidden_units], stddev=1.0 / math.sqrt(self.concat_embed_size),
     #                      dtype=self.dtype), name='w')
-    self.w = tf.get_variable('w',[self.tags_count, self.hidden_units],dtype=self.dtype,initializer=initializer)
+    self.w = tf.get_variable('w', [self.tags_count, self.hidden_units], dtype=self.dtype, initializer=initializer)
     self.b = tf.Variable(tf.zeros([self.tags_count, 1], dtype=self.dtype), name='b')
-    #self.transition = tf.Variable(tf.random_uniform([self.tags_count, self.tags_count], -0.2, 0.2, dtype=self.dtype))
-    #self.transition_init = tf.Variable(tf.random_uniform([self.tags_count], -0.2, 0.2, dtype=self.dtype))
-    self.transition = tf.get_variable('transition',[self.tags_count, self.tags_count],dtype=self.dtype,initializer=initializer)
-    self.transition_init = tf.get_variable('transition_init',[self.tags_count],dtype=self.dtype,initializer=initializer)
+    # self.transition = tf.Variable(tf.random_uniform([self.tags_count, self.tags_count], -0.2, 0.2, dtype=self.dtype))
+    # self.transition_init = tf.Variable(tf.random_uniform([self.tags_count], -0.2, 0.2, dtype=self.dtype))
+    self.transition = tf.get_variable('transition', [self.tags_count, self.tags_count], dtype=self.dtype,
+                                      initializer=initializer)
+    self.transition_init = tf.get_variable('transition_init', [self.tags_count], dtype=self.dtype,
+                                           initializer=initializer)
     self.transition_holder = tf.placeholder(self.dtype, shape=self.transition.get_shape())
     self.transition_init_holder = tf.placeholder(self.dtype, shape=self.transition_init.get_shape())
     self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
-    #self.optimizer = tf.train.AdagradOptimizer(0.5)
+    # self.optimizer = tf.train.AdagradOptimizer(0.5)
     # self.optimizer = tf.train.MomentumOptimizer(0.01,0.9)
     # self.optimizer = tf.train.AdamOptimizer(0.0001)#,beta1=0.1,beta2=0.001)
     self.update_transition = self.transition.assign(
@@ -203,7 +206,7 @@ class DNN(DNNBase):
     trans_init_neg_indices = []
     for i in range(self.batch_size):
       current_label = self.viterbi(scores[:, :lengths[i], i], transition, transition_init)
-      #current_label = self.viterbi(scores[:, :lengths[i], i], transition, transition_init, is_constraint=True,
+      # current_label = self.viterbi(scores[:, :lengths[i], i], transition, transition_init, is_constraint=True,
       #                             labels=label_batches[i, :lengths[i]])
       # current_label = self.viterbi_new(scores[:, :lengths[i], i], transition, transition_init,
       #                                 label_batches[i, :lengths[i]])
@@ -256,13 +259,13 @@ class DNN(DNNBase):
         output = self.sess.run(self.lstm_output, feed_dict={self.input: seq})
         print(output[-1, :, 10])
       print(self.transition_init.eval(session=self.sess))
-    current_labels = self.viterbi(sentence_scores, transition, transition_init ,is_constraint=False)
-    #return self.tags2words(sentence, current_labels), current_labels
-    #return self.tags2entities(sentence, current_labels), current_labels
-    return self.tags2category_entities(sentence, current_labels), current_labels
+    current_labels = self.viterbi(sentence_scores, transition, transition_init, is_constraint=False)
+    return self.tags2words(sentence, current_labels), current_labels
+    # return self.tags2entities(sentence, current_labels), current_labels
+    # return self.tags2category_entities(sentence, current_labels), current_labels
 
 
 if __name__ == '__main__':
-  dnn = DNN('mlp', mode=TrainMode.Sentence)
-  # dnn = DNN('lstm')
+  # dnn = DNN('mlp', mode=TrainMode.Sentence)
+  dnn = DNN('lstm')
   dnn.train_exe()
