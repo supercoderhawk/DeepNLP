@@ -3,10 +3,12 @@ import os
 import numpy as np
 from collections import OrderedDict
 import pickle
+from itertools import chain
+from utils import plot_lengths
 
 
 class PrepareDataNer():
-  def __init__(self, batch_length=225, entity_batch_size=10, relation_batch_size=50):
+  def __init__(self, entity_batch_length=225, relation_batch_length=60, entity_batch_size=10, relation_batch_size=50):
     self.entity_tags = {'O': 0, 'B': 1, 'I': 2, 'P': 3}
     self.entity_categories = {'Sign': 'SN', 'Symptom': 'SYM', 'Part': 'PT', 'Property': 'PTY', 'Degree': 'DEG',
                               'Quality': 'QLY', 'Quantity': 'QNY', 'Unit': 'UNT', 'Time': 'T', 'Date': 'DT',
@@ -43,7 +45,9 @@ class PrepareDataNer():
     self.filenames = []
     self.ext_dict_path = ['corpus/msr_dict.utf8', 'corpus/pku_dict.utf8']
     self.dict_path = 'corpus/emr_dict.utf8'
-    self.batch_length = batch_length
+    self.words_dict_path = 'corpus/emr_words_dict.utf8'
+    self.entity_batch_length = entity_batch_length
+    self.relation_batch_length = relation_batch_length
     self.entity_batch_size = entity_batch_size
     self.relation_batch_size = relation_batch_size
     for _, _, filenames in os.walk(self.base_folder):
@@ -51,9 +55,11 @@ class PrepareDataNer():
         filename, _ = os.path.splitext(filename)
         if filename not in self.filenames:
           self.filenames.append(filename)
-    self.annotation = self.read_annotation()
+    self.annotations = self.read_annotation()
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
+    self.words_dictionary = self.build_words_dictionary()
     self.characters, self.entity_labels, self.relations = self.build_dataset(True)
+    # self.plot_words_sentences()
     np.save('corpus/emr_training_characters', self.characters)
     np.save('corpus/emr_training_labels', self.entity_labels)
     with open('corpus/emr_relations.rel', 'wb') as f:
@@ -76,17 +82,38 @@ class PrepareDataNer():
         raw_text = raw_file.read().replace('\n', '\r\n')
       with open(self.base_folder + filename + '.ann', encoding='utf8') as annotation_file:
         results = annotation_file.read().replace('\t', ' ').splitlines()
-        annotation_results = {'entity': [], 'relation': []}
+        annotation_results = {'entity': [], 'relations': [], 'entity_start': {}, 'cws': {}}
+
         for result in results:
           sections = result.split(' ')
           if sections[0][0] == 'T':
             entity = {'id': sections[0], 'category': sections[1], 'start': int(sections[2]), 'end': int(sections[3]),
                       'content': sections[4]}
+            annotation_results['entity_start'][int(sections[2])] = {'id': sections[0]}
             annotation_results['entity'].append(entity)
           elif sections[0][0] == 'R':
             relation = {'id': sections[0], 'category': sections[1], 'primary': sections[2].split(':')[-1],
                         'secondary': sections[3].split(':')[-1]}
-            annotation_results['relation'].append(relation)
+            annotation_results['relations'].append(relation)
+        with open(self.base_folder + filename + '.cws', encoding='utf8') as cws_file:
+          words = cws_file.read().strip().split('  ')
+          lengths = [0]
+
+          for i, w in enumerate(words):
+            lengths.append(lengths[-1] + len(w))
+            words[i] = words[i].replace('\n', '')
+
+          # 验证
+          for e in annotation_results['entity']:
+            s = e['start']
+            end = e['end']
+            if s in lengths and end in lengths:
+              if lengths.index(end) - lengths.index(s) != 1:
+                print(filename)
+                print(e)
+
+          annotation_results['cws']['words'] = words
+          annotation_results['cws']['words_index'] = lengths
       annotation[filename] = {'raw': raw_text, 'annotation': annotation_results}
     return annotation
 
@@ -99,7 +126,7 @@ class PrepareDataNer():
 
     content = ''
     for filename in self.filenames:
-      content += self.annotation[filename]['raw']
+      content += self.annotations[filename]['raw']
     # print(len(list(content)) / 1024)
     characters.extend(list(content.replace('\r\n', '')))
     characters = list(
@@ -116,6 +143,22 @@ class PrepareDataNer():
         dict_file.write(character + ' ' + str(dictionary[character]) + '\n')
     return dictionary, dict(zip(dictionary.values(), dictionary.keys()))
 
+  def build_words_dictionary(self):
+    words = set()
+    words_dictionary = {'BATCH_PAD': 0, 'UNK': 1}
+    for filename in self.annotations:
+      for word in self.annotations[filename]['annotation']['cws']['words']:
+        words.add(word)
+    with open(self.words_dict_path, 'w', encoding='utf8') as dict_path:
+      dict_path.write('BATCH_PAD 0\n')
+      dict_path.write('UNK 1\n')
+      for w in words:
+        if len(w) > 0:
+          words_dictionary[w] = len(words_dictionary)
+          dict_path.write(w + ' ' + str(words_dictionary[w]) + '\n')
+
+    return words_dictionary
+
   @staticmethod
   def read_dictionary(dict_path):
     dict_file = open(dict_path, 'r', encoding='utf-8')
@@ -130,6 +173,7 @@ class PrepareDataNer():
   def build_dataset(self, is_entity_category=False, is_relation_category=False, is_negative_relation=True):
     rn = ['\r', '\n']
     seg = [self.dictionary['。']]
+    word_seg = [self.words_dictionary['。']]
     characters_index = []
     entity_labels = []
     relations = []
@@ -137,17 +181,20 @@ class PrepareDataNer():
     neg = 0
 
     for filename in self.filenames:
-      raw_text = self.annotation[filename]['raw']
-      annotations = self.annotation[filename]['annotation']
+      raw_text = self.annotations[filename]['raw']
+      annotations = self.annotations[filename]['annotation']
+      cws_list = annotations['cws']['words']
+      entity_start = annotations['entity_start']
       character_index = []
+      word_index = []
       entity_label = [self.entity_tags['O']] * len(raw_text)
       rn_index = []
-      entity_index = [0] * len(raw_text)  # 实体索引，在实体每个字符标为实体的编号，其他地方为0
       relation = {}
       primary_entity = []
       seg_index = [0]
+      word_seg_index = [0]
 
-      for index, character in enumerate(list(raw_text)):
+      for index, character in enumerate(raw_text):
         if character in rn:
           rn_index.append(index)
         elif character not in self.dictionary:
@@ -155,12 +202,17 @@ class PrepareDataNer():
         else:
           character_index.append(self.dictionary[character])
 
+      for index, word in enumerate(cws_list):
+        if word not in self.words_dictionary:
+          word_index.append(1)
+        else:
+          word_index.append(self.words_dictionary[word])
+
       for entity_annotation in annotations['entity']:
         start = entity_annotation['start']
         end = entity_annotation['end']
         content = entity_annotation['content']
         type = entity_annotation['category']
-        entity_index[start:end] = [entity_annotation['id']] * (end - start)
         if is_entity_category:
           entity_label[start] = self.entity_category_labels[self.entity_categories[type] + '_B']
           if len(content) > 1:
@@ -170,7 +222,8 @@ class PrepareDataNer():
             entity_label[start] = self.entity_tags['B']
             if len(content) > 1:
               entity_label[start + 1:end] = [self.entity_tags['I']] * (end - start - 1)
-      for relation_annotation in annotations['relation']:
+
+      for relation_annotation in annotations['relations']:
         id = relation_annotation['id']
         type = relation_annotation['category']
         primary = relation_annotation['primary']
@@ -181,7 +234,6 @@ class PrepareDataNer():
       # 处理回车
       if len(rn_index) != 0:
         entity_label = [l[1] for l in filter(lambda ch_item: ch_item[0] not in rn_index, enumerate(entity_label))]
-        entity_index = [l[1] for l in filter(lambda ch_item: ch_item[0] not in rn_index, enumerate(entity_index))]
 
       # 分割
       doc_length = len(character_index)
@@ -189,43 +241,62 @@ class PrepareDataNer():
         if ch_index in seg:
           if index != doc_length - 1 and self.dictionary['”'] != character_index[index + 1]:
             seg_index.append(index + 1)
-      if seg_index[-1] != len(character_index):
-        seg_index.append(len(character_index))
+      if seg_index[-1] != doc_length:
+        seg_index.append(doc_length)
 
-      for cur_index, latter_index in zip(seg_index[:-1], seg_index[1:]):
+      words_length = len(word_index)
+      for i, w in enumerate(word_index):
+        if w in word_seg:
+          if i != words_length - 1 and self.words_dictionary['”'] != word_index[i + 1]:
+            word_seg_index.append(i)
+      if word_seg_index[-1] != words_length:
+        word_seg_index.append(words_length)
+
+      # 检验
+      if len(seg_index) != len(word_seg_index):
+        print(filename)
+        print(len(seg_index) - len(word_seg_index))
+
+      for cur_index, latter_index, cur_word_index, latter_word_index in zip(seg_index[:-1], seg_index[1:],
+                                                                            word_seg_index[:-1], word_seg_index[1:]):
+        # 以句号分隔的句子中每个字的索引
         characters_index.append(np.array(character_index[cur_index:latter_index], dtype=np.int32))
+        # 每个字对应的实体标签
         entity_labels.append(np.array(entity_label[cur_index:latter_index], dtype=np.int32))
-        entity_start = {}  # 每个句子中所有实体字典，键为实体id，值为实体开头字符在句子中的位置
+
+        # 处理关系
+        entity_dict = {}  # 每个句子中所有实体字典，键为实体id，值为实体在句子中的索引
         positive_relation = []  # 关系的'hash'
-        for ii, i in enumerate(entity_index[cur_index:latter_index]):
-          if i != 0 and entity_start.get(i) is None:
-            entity_start[i] = ii
-        arr = np.arange(0, latter_index - cur_index) + self.batch_length - 1  # 位置索引baseline
-        for entity_id in [e for e in entity_start if e in primary_entity]:
-          secondary = relation[entity_id][0]
-          type = relation[entity_id][1]
+
+        for ii, i in enumerate(annotations['cws']['words_index'][cur_word_index:latter_word_index]):
+          if entity_start.get(i) != None:
+            entity_dict[entity_start[i]['id']] = ii
+        arr = np.arange(0, latter_word_index - cur_word_index) + self.relation_batch_length - 1  # 位置索引baseline
+        for primary_id in [e for e in entity_dict if e in primary_entity]:
+          secondary_id = relation[primary_id][0]
+          type = relation[primary_id][1]
           if is_relation_category:
             relation_label = [0] * self.relation_category_label_count
             relation_label[self.relation_category_labels[type]] = 1
           else:
             relation_label = [0, 1]
 
-          primary_start = entity_start[entity_id]
-          if entity_start.get(secondary) is not None:
-            secondary_start = entity_start[secondary]
-            relation_item = {'sentence': np.array(character_index[cur_index:latter_index], dtype=np.int32),
-                             'primary': arr - primary_start, 'secondary': arr - secondary_start,
+          primary = entity_dict[primary_id]
+          if entity_dict.get(secondary_id) is not None:
+            secondary = entity_dict[secondary_id]
+            relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
+                             'primary': arr - primary, 'secondary': arr - secondary,
                              'label': relation_label}
             relations.append(relation_item)
 
-            positive_relation.append(entity_id + ':' + secondary)
+            positive_relation.append(primary_id + ':' + secondary_id)
         pos += len(positive_relation)
-        entities = list(entity_start.keys())
+        entities = list(entity_dict.keys())
         if is_negative_relation:
           for entity_i, entity in enumerate(entities):
             secondaries = [s for s in entities[:entity_i] + entities[entity_i + 1:] if
                            entity + ':' + s not in positive_relation]
-            primary_start = entity_start[entity]
+            primary_start = entity_dict[entity]
             neg += len(secondaries)
             for s in secondaries:
               if is_relation_category:
@@ -233,8 +304,8 @@ class PrepareDataNer():
                 relation_label[self.relation_category_labels['NoRelation']] = 1
               else:
                 relation_label = [1, 0]
-              relation_item = {'sentence': np.array(character_index[cur_index:latter_index], dtype=np.int32),
-                               'primary': arr - primary_start, 'secondary': arr - entity_start[s],
+              relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
+                               'primary': arr - primary_start, 'secondary': arr - entity_dict[s],
                                'label': relation_label}
               relations.append(relation_item)
     print(neg / (pos + neg))
@@ -244,23 +315,30 @@ class PrepareDataNer():
         sentence += self.reverse_dictionary[ch]
     return np.array(characters_index), np.array(entity_labels), relations
 
+  def plot_words_sentences(self):
+    lengths = list(map(lambda r: len(r['sentence']), self.relations))
+    lengths.sort()
+    plot_lengths(lengths)
+
   def build_entity_batch(self, category=False):
     characters = []
     labels = []
     for line_characters, line_labels in zip(self.characters, self.entity_labels):
       length = len(line_characters)
-      if length >= self.batch_length:
-        characters.append(line_characters[:self.batch_length])
-        labels.append(line_labels[:self.batch_length])
+      if length >= self.entity_batch_length:
+        characters.append(line_characters[:self.entity_batch_length])
+        labels.append(line_labels[:self.entity_batch_length])
       else:
-        characters.append(line_characters.tolist() + [self.dictionary['BATCH_PAD']] * (self.batch_length - length))
+        characters.append(
+          line_characters.tolist() + [self.dictionary['BATCH_PAD']] * (self.entity_batch_length - length))
         if category:
-          labels.append(line_labels.tolist() + [self.entity_category_labels['P']] * (self.batch_length - length))
+          labels.append(line_labels.tolist() + [self.entity_category_labels['P']] * (self.entity_batch_length - length))
         else:
-          labels.append(line_labels.tolist() + [self.entity_tags['P']] * (self.batch_length - length))
+          labels.append(line_labels.tolist() + [self.entity_tags['P']] * (self.entity_batch_length - length))
     extra_count = len(characters) % self.entity_batch_size
-    characters = np.array(characters[:-extra_count], np.int32).reshape([-1, self.entity_batch_size, self.batch_length])
-    labels = np.array(labels[:-extra_count], np.int32).reshape([-1, self.entity_batch_size, self.batch_length])
+    characters = np.array(characters[:-extra_count], np.int32).reshape(
+      [-1, self.entity_batch_size, self.entity_batch_length])
+    labels = np.array(labels[:-extra_count], np.int32).reshape([-1, self.entity_batch_size, self.entity_batch_length])
     return characters, labels
 
   def build_relation_batch(self):
@@ -272,20 +350,20 @@ class PrepareDataNer():
     index = 0
     for relation in self.relations:
       sentence = relation['sentence'].tolist()
-      if len(sentence) > self.batch_length:
-        sentence = sentence[:self.batch_length]
+      if len(sentence) > self.relation_batch_length:
+        sentence = sentence[:self.relation_batch_length]
       else:
-        sentence.extend([self.dictionary['BATCH_PAD']] * (self.batch_length - len(sentence)))
+        sentence.extend([self.dictionary['BATCH_PAD']] * (self.relation_batch_length - len(sentence)))
       primary = relation['primary'].tolist()
-      if len(primary) > self.batch_length:
-        primary = primary[:self.batch_length]
+      if len(primary) > self.relation_batch_length:
+        primary = primary[:self.relation_batch_length]
       else:
-        primary.extend(range(primary[-1] + 1, primary[-1] + 1 + self.batch_length - len(primary)))
+        primary.extend(range(primary[-1] + 1, primary[-1] + 1 + self.relation_batch_length - len(primary)))
       secondary = relation['secondary'].tolist()
-      if len(secondary) > self.batch_length:
-        secondary = secondary[:self.batch_length]
+      if len(secondary) > self.relation_batch_length:
+        secondary = secondary[:self.relation_batch_length]
       else:
-        secondary.extend(range(secondary[-1] + 1, secondary[-1] + 1 + self.batch_length - len(secondary)))
+        secondary.extend(range(secondary[-1] + 1, secondary[-1] + 1 + self.relation_batch_length - len(secondary)))
       sentence_batch.append(sentence)
       primary_batch.append(primary)
       secondary_batch.append(secondary)
