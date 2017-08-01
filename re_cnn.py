@@ -5,7 +5,7 @@ import pickle
 
 
 class RECNN():
-  def __init__(self, relation_count=2, batch_size=50, batch_length=225):
+  def __init__(self, relation_count=2, batch_size=50, batch_length=85):
     self.dtype = tf.float32
     self.window_size = 3
     self.filter_size = 150
@@ -17,9 +17,9 @@ class RECNN():
     self.lam = 0.0005
     self.character_embed_size = 300
     self.position_embed_size = 50
-    self.dict_path = 'corpus/emr_dict.utf8'
+    self.dict_path = 'corpus/emr_words_dict.utf8'
     self.dictionary = self.read_dictionary()
-    self.character_size = len(self.dictionary)
+    self.words_size = len(self.dictionary)
     self.batch_path = 'corpus/emr_relation_batches.rel'
     self.output_folder = 'tmp/re/'
     self.concat_embed_size = self.character_embed_size + 2 * self.position_embed_size
@@ -29,7 +29,7 @@ class RECNN():
     self.input = tf.placeholder(self.dtype, [self.batch_size, self.batch_length, self.concat_embed_size, 1])
     self.input_relation = tf.placeholder(self.dtype, [self.batch_size, self.relation_count])
     self.position_embedding = self.weight_variable([2 * self.batch_length, self.position_embed_size])
-    self.character_embedding = self.weight_variable([self.character_size, self.character_embed_size])
+    self.character_embedding = self.weight_variable([self.words_size, self.character_embed_size])
     self.conv_kernel = self.weight_variable([self.window_size, self.concat_embed_size, 1, self.filter_size])
     self.bias = self.weight_variable([self.filter_size])
     self.full_connected_weight = self.weight_variable([self.filter_size, self.relation_count])
@@ -108,11 +108,13 @@ class RECNN():
 
   def test(self):
     with tf.Session() as sess:
-      self.saver.restore(sess, self.output_folder + 'cnn_emr_model5.ckpt')
+      self.saver.restore(sess, self.output_folder + 'cnn_emr_model3.ckpt')
       neg = 0
       all = 0
+      pos_pos = 0
+      pos_all = 0
 
-      for i in range(10):
+      for i in range(100):
         batch = self.batches[i]
         character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],
                                                     feed_dict={self.input_characters: batch['sentence'],
@@ -122,16 +124,17 @@ class RECNN():
                                                        self.primary_embed_holder: primary_embeds,
                                                        self.secondary_embed_holder: secondary_embeds})
         output = sess.run(self.output, feed_dict={self.input: input})
+        index = np.nonzero(batch['label'][:, 1])[0]
+        pos_pos += np.intersect1d(index, np.nonzero(np.argmax(output, 1))[0]).shape[0]
+        pos_all += index.shape[0]
+        print(pos_all)
         neg += np.count_nonzero(np.argmax(output, 1) - np.argmax(batch['label'], 1))
-        if np.sum(np.argmax(output, 1)) > 0:
-          print('a')
-
-        print(np.argmax(output, 1))
-        # print(np.argmax(batch['label'], 1))
         all += self.batch_size
 
       prec = 1 - neg / all
+      pos_prec = pos_pos / pos_all
       print(prec)
+      print(pos_prec)
 
 
 if __name__ == '__main__':
