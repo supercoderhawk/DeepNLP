@@ -8,7 +8,7 @@ from utils import plot_lengths
 
 
 class PrepareDataNer():
-  def __init__(self, entity_batch_length=225, relation_batch_length=60, entity_batch_size=10, relation_batch_size=50):
+  def __init__(self, entity_batch_length=225, relation_batch_length=85, entity_batch_size=10, relation_batch_size=50):
     self.entity_tags = {'O': 0, 'B': 1, 'I': 2, 'P': 3}
     self.entity_categories = {'Sign': 'SN', 'Symptom': 'SYM', 'Part': 'PT', 'Property': 'PTY', 'Degree': 'DEG',
                               'Quality': 'QLY', 'Quantity': 'QNY', 'Unit': 'UNT', 'Time': 'T', 'Date': 'DT',
@@ -179,6 +179,7 @@ class PrepareDataNer():
     relations = []
     pos = 0
     neg = 0
+    max_len = 0
 
     for filename in self.filenames:
       raw_text = self.annotations[filename]['raw']
@@ -259,6 +260,10 @@ class PrepareDataNer():
 
       for cur_index, latter_index, cur_word_index, latter_word_index in zip(seg_index[:-1], seg_index[1:],
                                                                             word_seg_index[:-1], word_seg_index[1:]):
+        # 寻找最长句子
+        if max_len < latter_word_index - cur_word_index:
+          max_len = latter_word_index - cur_word_index
+
         # 以句号分隔的句子中每个字的索引
         characters_index.append(np.array(character_index[cur_index:latter_index], dtype=np.int32))
         # 每个字对应的实体标签
@@ -308,7 +313,9 @@ class PrepareDataNer():
                                'primary': arr - primary_start, 'secondary': arr - entity_dict[s],
                                'label': relation_label}
               relations.append(relation_item)
+
     print(neg / (pos + neg))
+    print(max_len)
     for i, chs in enumerate(characters_index):
       sentence = ''
       for ch in chs:
