@@ -21,9 +21,9 @@ class RECNN():
     self.dictionary = self.read_dictionary()
     self.words_size = len(self.dictionary)
     self.batch_path = 'corpus/emr_relation_batches.rel'
+    self.test_batch_path = 'corpus/emr_all_relation_batches.rel'
     self.output_folder = 'tmp/re/'
     self.concat_embed_size = self.character_embed_size + 2 * self.position_embed_size
-    self.batches = self.load_batches()
     self.input_characters = tf.placeholder(tf.int32, [self.batch_size, self.batch_length])
     self.input_position = tf.placeholder(tf.int32, [self.batch_size, self.batch_length])
     self.input = tf.placeholder(self.dtype, [self.batch_size, self.batch_length, self.concat_embed_size, 1])
@@ -73,13 +73,14 @@ class RECNN():
                           strides=[1, 1, 1, 1], padding='VALID')
 
   def train(self):
+    batches = self.load_batches(self.batch_path)
     with tf.Session() as sess:
       tf.global_variables_initializer().run()
       sess.graph.finalize()
       epoches = 100
       for i in range(epoches):
         print('epoch:' + str(i))
-        for batch in self.batches:
+        for batch in batches:
           character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],
                                                       feed_dict={self.input_characters: batch['sentence'],
                                                                  self.input_position: batch['primary']})
@@ -91,8 +92,8 @@ class RECNN():
           sess.run(self.train_cross_entropy_model, feed_dict={self.input: input, self.input_relation: batch['label']})
         self.saver.save(sess, self.output_folder + 'cnn_emr_model%d.ckpt' % i)
 
-  def load_batches(self):
-    with open(self.batch_path, 'rb') as f:
+  def load_batches(self, path):
+    with open(path, 'rb') as f:
       batches = pickle.load(f)
       return batches
 
@@ -109,13 +110,14 @@ class RECNN():
   def test(self):
     with tf.Session() as sess:
       self.saver.restore(sess, self.output_folder + 'cnn_emr_model3.ckpt')
+      batches = self.load_batches(self.test_batch_path)
       neg = 0
       all = 0
       pos_pos = 0
       pos_all = 0
 
       for i in range(100):
-        batch = self.batches[i]
+        batch = batches[i]
         character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],
                                                     feed_dict={self.input_characters: batch['sentence'],
                                                                self.input_position: batch['primary']})
@@ -127,7 +129,6 @@ class RECNN():
         index = np.nonzero(batch['label'][:, 1])[0]
         pos_pos += np.intersect1d(index, np.nonzero(np.argmax(output, 1))[0]).shape[0]
         pos_all += index.shape[0]
-        print(pos_all)
         neg += np.count_nonzero(np.argmax(output, 1) - np.argmax(batch['label'], 1))
         all += self.batch_size
 

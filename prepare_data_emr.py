@@ -58,7 +58,7 @@ class PrepareDataNer():
     self.annotations = self.read_annotation()
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
     self.words_dictionary = self.build_words_dictionary()
-    self.characters, self.entity_labels, self.relations = self.build_dataset(True)
+    self.characters, self.entity_labels, self.relations,self.all_relations = self.build_dataset(True)
     # self.plot_words_sentences()
     np.save('corpus/emr_training_characters', self.characters)
     np.save('corpus/emr_training_labels', self.entity_labels)
@@ -71,9 +71,12 @@ class PrepareDataNer():
     self.character_batches, self.label_batches = self.build_entity_batch()
     np.save('corpus/emr_training_character_batches', self.character_batches)
     np.save('corpus/emr_training_label_batches', self.label_batches)
-    self.relation_batches = self.build_relation_batch()
+    self.train_relation_batches = self.build_relation_batch(self.relations)
+    self.all_relation_batches = self.build_relation_batch(self.relations)
     with open('corpus/emr_relation_batches.rel', 'wb') as f:
-      pickle.dump(self.relation_batches, f)
+      pickle.dump(self.train_relation_batches, f)
+    with open('corpus/emr_all_relation_batches.rel', 'wb') as f:
+      pickle.dump(self.all_relation_batches, f)
 
   def read_annotation(self):
     annotation = {}
@@ -176,9 +179,11 @@ class PrepareDataNer():
     word_seg = [self.words_dictionary['。']]
     characters_index = []
     entity_labels = []
-    relations = []
+    train_relations = []
+    all_relations = []
     pos = 0
     neg = 0
+    all_neg = 0
     max_len = 0
 
     for filename in self.filenames:
@@ -271,7 +276,8 @@ class PrepareDataNer():
 
         # 处理关系
         entity_dict = {}  # 每个句子中所有实体字典，键为实体id，值为实体在句子中的索引
-        positive_relation = []  # 关系的'hash'
+        positive_relations = []  # 训练用关系的'hash'，primary_id < secondary_id
+        all_positive_relations = [] # 未处理的关系的hash
 
         for ii, i in enumerate(annotations['cws']['words_index'][cur_word_index:latter_word_index]):
           if entity_start.get(i) != None:
@@ -292,16 +298,17 @@ class PrepareDataNer():
             # 无向
             if primary_id > secondary_id:
               # primary, secondary = secondary, primary
-              positive_relation.append(secondary_id + ':' + primary_id)
+              positive_relations.append(secondary_id + ':' + primary_id)
             else:
-              positive_relation.append(primary_id + ':' + secondary_id)
-
+              positive_relations.append(primary_id + ':' + secondary_id)
+            all_positive_relations.append(primary_id + ':' + secondary_id)
             relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
                              'primary': arr - primary, 'secondary': arr - secondary,
                              'label': relation_label}
-            relations.append(relation_item)
+            train_relations.append(relation_item)
+            all_relations.append(relation_item)
 
-        pos += len(positive_relation)
+        pos += len(positive_relations)
         entities = list(entity_dict.keys())
         # 添加非关系，可认为是负采样
         distance = 2
@@ -310,11 +317,14 @@ class PrepareDataNer():
             secondaries = []
             for s in entities[:entity_i] + entities[entity_i + 1:]:
               if entity < s:  # 无向
-                if entity + ':' + s not in positive_relation and abs(entity_dict[entity] - entity_dict[s]) < distance:
+                if entity + ':' + s not in positive_relations and abs(entity_dict[entity] - entity_dict[s]) < distance:
                   secondaries.append(s)
-
+            all_secondaries = [s for s in entities[:entity_i] + entities[entity_i + 1:]
+                               if entity + ':' + s not in all_positive_relations]
             primary_start = entity_dict[entity]
             neg += len(secondaries)
+            all_neg += len(all_secondaries)
+
             for s in secondaries:
               if is_relation_category:
                 relation_label = [0] * self.relation_category_label_count
@@ -324,15 +334,25 @@ class PrepareDataNer():
               relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
                                'primary': arr - primary_start, 'secondary': arr - entity_dict[s],
                                'label': relation_label}
-              relations.append(relation_item)
+              train_relations.append(relation_item)
+            for s in all_secondaries:
+              if is_relation_category:
+                relation_label = [0] * self.relation_category_label_count
+                relation_label[self.relation_category_labels['NoRelation']] = 1
+              else:
+                relation_label = [1, 0]
+              relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
+                               'primary': arr - primary_start, 'secondary': arr - entity_dict[s],
+                               'label': relation_label}
+              all_relations.append(relation_item)
 
     print(neg / (pos + neg))
-    print(max_len)
+    print(all_neg / (pos + all_neg))
     for i, chs in enumerate(characters_index):
       sentence = ''
       for ch in chs:
         sentence += self.reverse_dictionary[ch]
-    return np.array(characters_index), np.array(entity_labels), relations
+    return np.array(characters_index), np.array(entity_labels), train_relations, all_relations
 
   def plot_words_sentences(self):
     lengths = list(map(lambda r: len(r['sentence']), self.relations))
@@ -360,14 +380,14 @@ class PrepareDataNer():
     labels = np.array(labels[:-extra_count], np.int32).reshape([-1, self.entity_batch_size, self.entity_batch_length])
     return characters, labels
 
-  def build_relation_batch(self):
+  def build_relation_batch(self, relations):
     relation_batches = []
     sentence_batch = []
     primary_batch = []
     secondary_batch = []
     label_batch = []
     index = 0
-    for relation in self.relations:
+    for relation in relations:
       sentence = relation['sentence'].tolist()
       if len(sentence) > self.relation_batch_length:
         sentence = sentence[:self.relation_batch_length]
