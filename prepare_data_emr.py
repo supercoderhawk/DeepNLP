@@ -289,18 +289,30 @@ class PrepareDataNer():
           primary = entity_dict[primary_id]
           if entity_dict.get(secondary_id) is not None:
             secondary = entity_dict[secondary_id]
+            # 无向
+            if primary_id > secondary_id:
+              # primary, secondary = secondary, primary
+              positive_relation.append(secondary_id + ':' + primary_id)
+            else:
+              positive_relation.append(primary_id + ':' + secondary_id)
+
             relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
                              'primary': arr - primary, 'secondary': arr - secondary,
                              'label': relation_label}
             relations.append(relation_item)
 
-            positive_relation.append(primary_id + ':' + secondary_id)
         pos += len(positive_relation)
         entities = list(entity_dict.keys())
+        # 添加非关系，可认为是负采样
+        distance = 2
         if is_negative_relation:
           for entity_i, entity in enumerate(entities):
-            secondaries = [s for s in entities[:entity_i] + entities[entity_i + 1:] if
-                           entity + ':' + s not in positive_relation]
+            secondaries = []
+            for s in entities[:entity_i] + entities[entity_i + 1:]:
+              if entity < s:  # 无向
+                if entity + ':' + s not in positive_relation and abs(entity_dict[entity] - entity_dict[s]) < distance:
+                  secondaries.append(s)
+
             primary_start = entity_dict[entity]
             neg += len(secondaries)
             for s in secondaries:
