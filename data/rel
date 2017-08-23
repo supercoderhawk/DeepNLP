@@ -1,0 +1,95 @@
+PartOf         Arg1:Sign,   Arg2:Part
+QualityValue   Arg1:Sign,   Arg2:Quality
+QuantityValue  Arg1:Sign,   Arg2:Quantity
+UnitOf         Arg1:Sign,   Arg2:Unit
+PropertyOf     Arg1:Sign,   Arg2:Property
+DegreeOf       Arg1:Sign,   Arg2:Degree
+DateOf         Arg1:Sign,   Arg2:Date
+TimeOf         Arg1:Sign,   Arg2:Time
+StartTime      Arg1:Sign,   Arg2:Time
+EndTime        Arg1:Sign,   Arg2:Time
+Moment         Arg1:Sign,   Arg2:Time
+LocationOf     Arg1:Sign,   Arg2:Location
+FamilyOf       Arg1:Sign,   Arg2:Family
+ModifierOf     Arg1:Sign,   Arg2:Modifier
+
+PartOf         Arg1:Symptom,   Arg2:Part
+QualityValue   Arg1:Symptom,   Arg2:Quality
+QuantityValue  Arg1:Symptom,   Arg2:Quantity
+UnitOf         Arg1:Symptom,   Arg2:Unit
+PropertyOf     Arg1:Symptom,   Arg2:Property
+DegreeOf       Arg1:Symptom,   Arg2:Degree
+ResultOf       Arg1:Symptom,   Arg2:Result
+DateOf         Arg1:Symptom,   Arg2:Date
+TimeOf         Arg1:Symptom,   Arg2:Time
+StartTime      Arg1:Symptom,   Arg2:Time
+EndTime        Arg1:Symptom,   Arg2:Time
+Moment         Arg1:Symptom,   Arg2:Time
+FamilyOf       Arg1:Symptom,   Arg2:Family
+LocationOf     Arg1:Symptom,   Arg2:Location
+ModifierOf     Arg1:Symptom,   Arg2:Modifier
+
+PartOf         Arg1:Disease,   Arg2:Part
+DiseaseTypeOf  Arg1:Disease,   Arg2:DiseaseType
+PropertyOf     Arg1:Disease,   Arg2:Property
+DegreeOf       Arg1:Disease,   Arg2:Degree
+TimeOf         Arg1:Disease,   Arg2:Time
+Moment         Arg1:Disease,   Arg2:Time
+StartTime      Arg1:Disease,   Arg2:Time
+EndTime        Arg1:Disease,   Arg2:Time
+QualityValue   Arg1:Disease,   Arg2:Quality
+FamilyOf       Arg1:Disease,   Arg2:Family
+ModifierOf     Arg1:Disease,   Arg2:Modifier
+
+QualityValue   Arg1:Examination,   Arg2:Quality
+QuantityValue  Arg1:Examination,   Arg2:Quantity
+UnitOf         Arg1:Examination,   Arg2:Unit
+PartOf         Arg1:Examination,   Arg2:Part
+ResultOf       Arg1:Examination,   Arg2:Result
+Moment         Arg1:Examination,   Arg2:Time
+TimeOf         Arg1:Examination,   Arg2:Time
+DateOf         Arg1:Examination,   Arg2:Date
+LocationOf     Arg1:Examination,   Arg2:Location
+ModifierOf     Arg1:Examination,   Arg2:Modifier
+
+PartOf         Arg1:Medicine,   Arg2:Part
+SpecOf         Arg1:Medicine,   Arg2:Spec
+Moment         Arg1:Medicine,   Arg2:Time
+TimeOf         Arg1:Medicine,   Arg2:Time
+StartTime      Arg1:Medicine,   Arg2:Time
+EndTime        Arg1:Medicine,   Arg2:Time
+QualityValue   Arg1:Medicine,   Arg2:Quality
+UsageOf        Arg1:Medicine,   Arg2:Usage
+DoseOf         Arg1:Medicine,   Arg2:Dose
+ModifierOf     Arg1:Medicine,   Arg2:Modifier
+
+PartOf         Arg1:Treatment,   Arg2:Part
+QualityValue   Arg1:Treatment,   Arg2:Quality
+PropertyOf     Arg1:Treatment,   Arg2:Property
+Moment         Arg1:Treatment,   Arg2:Time
+TimeOf         Arg1:Treatment,   Arg2:Time
+StartTime      Arg1:Treatment,   Arg2:Time
+EndTime        Arg1:Treatment,   Arg2:Time
+LocationOf     Arg1:Treatment,   Arg2:Location
+ResultOf       Arg1:Treatment,   Arg2:Result
+ModifierOf     Arg1:Treatment,   Arg2:Modifier
+
+
+UseMedicine    Arg1:Treatment,   Arg2:Medicine
+AlongWith      Arg1:Treatment,   Arg2:Treatment
+
+AlongWith      Arg1:Disease,   Arg2:Disease
+LeadTo         Arg1:Disease,   Arg2:Symptom
+LeadTo         Arg1:Disease,   Arg2:Sign
+Adopt          Arg1:Disease,   Arg2:Treatment
+Take           Arg1:Disease,   Arg2:Medicine
+
+Find           Arg1:Examination,   Arg2:Sign
+Confirm        Arg1:Examination,   Arg2:Disease
+
+AlongWith      Arg1:Symptom,   Arg2:Symptom
+
+AlongWith      Arg1:Sign,   Arg2:Sign
+Complement     Arg1:Sign,   Arg2:Sign
+
+Limit          Aeg1:Part,   Arg2:Part

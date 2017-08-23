@@ -33,6 +33,8 @@ class PrepareDataNer():
                                 'DoseOf': '用量', 'FamilyOf': '家族成员', 'ModifierOf': '其他修饰词', 'UseMedicine': '用药',
                                 'LeadTo': '导致', 'Find': '发现', 'Confirm': '证实', 'Adopt': '采取', 'Take': '用药',
                                 'Limit': '限定', 'AlongWith': '伴随', 'Complement': '补足'}
+    with open('data/rel_pairs', 'rb') as pairs_file:
+      self.relation_constraint = pickle.load(pairs_file)
     self.relation_category_labels = {'NoRelation': 0}
     relation_category_index = 1
     for relation_category in self.relation_categories:
@@ -58,7 +60,7 @@ class PrepareDataNer():
     self.annotations = self.read_annotation()
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
     self.words_dictionary = self.build_words_dictionary()
-    self.characters, self.entity_labels, self.relations,self.all_relations = self.build_dataset(True)
+    self.characters, self.entity_labels, self.relations, self.all_relations = self.build_dataset(True)
     # self.plot_words_sentences()
     np.save('corpus/emr_training_characters', self.characters)
     np.save('corpus/emr_training_labels', self.entity_labels)
@@ -85,7 +87,7 @@ class PrepareDataNer():
         raw_text = raw_file.read().replace('\n', '\r\n')
       with open(self.base_folder + filename + '.ann', encoding='utf8') as annotation_file:
         results = annotation_file.read().replace('\t', ' ').splitlines()
-        annotation_results = {'entity': [], 'relations': [], 'entity_start': {}, 'cws': {}}
+        annotation_results = {'entity': {}, 'relations': [], 'entity_start': {}, 'cws': {}}
 
         for result in results:
           sections = result.split(' ')
@@ -93,7 +95,7 @@ class PrepareDataNer():
             entity = {'id': sections[0], 'category': sections[1], 'start': int(sections[2]), 'end': int(sections[3]),
                       'content': sections[4]}
             annotation_results['entity_start'][int(sections[2])] = {'id': sections[0]}
-            annotation_results['entity'].append(entity)
+            annotation_results['entity'][sections[0]] = entity
           elif sections[0][0] == 'R':
             relation = {'id': sections[0], 'category': sections[1], 'primary': sections[2].split(':')[-1],
                         'secondary': sections[3].split(':')[-1]}
@@ -107,7 +109,7 @@ class PrepareDataNer():
             words[i] = words[i].replace('\n', '')
 
           # 验证
-          for e in annotation_results['entity']:
+          for e in annotation_results['entity'].values():
             s = e['start']
             end = e['end']
             if s in lengths and end in lengths:
@@ -176,7 +178,9 @@ class PrepareDataNer():
   def build_dataset(self, is_entity_category=False, is_relation_category=False, is_negative_relation=True):
     rn = ['\r', '\n']
     seg = [self.dictionary['。']]
+    seg_in_sentence = [self.dictionary[',']]
     word_seg = [self.words_dictionary['。']]
+    word_seg_in_sentence = [self.words_dictionary[',']]
     characters_index = []
     entity_labels = []
     train_relations = []
@@ -190,15 +194,17 @@ class PrepareDataNer():
       raw_text = self.annotations[filename]['raw']
       annotations = self.annotations[filename]['annotation']
       cws_list = annotations['cws']['words']
+      cws_list_index = annotations['cws']['words_index']
       entity_start = annotations['entity_start']
+      all_entities = annotations['entity']
       character_index = []
       word_index = []
       entity_label = [self.entity_tags['O']] * len(raw_text)
       rn_index = []
       relation = {}
       primary_entity = []
-      seg_index = [0]
-      word_seg_index = [0]
+      seg_index = [0]  # 分隔符的字索引
+      word_seg_index = [0]  # 分隔符的词索引
 
       for index, character in enumerate(raw_text):
         if character in rn:
@@ -214,7 +220,7 @@ class PrepareDataNer():
         else:
           word_index.append(self.words_dictionary[word])
 
-      for entity_annotation in annotations['entity']:
+      for entity_annotation in annotations['entity'].values():
         start = entity_annotation['start']
         end = entity_annotation['end']
         content = entity_annotation['content']
@@ -277,11 +283,15 @@ class PrepareDataNer():
         # 处理关系
         entity_dict = {}  # 每个句子中所有实体字典，键为实体id，值为实体在句子中的索引
         positive_relations = []  # 训练用关系的'hash'，primary_id < secondary_id
-        all_positive_relations = [] # 未处理的关系的hash
+        current_relations = []  # 已添加的关系`hash`，防止无序关系添加两次
+        sentence_word_index = []  # 句子中每个词在词典中的索引
+        all_positive_relations = []  # 未处理的关系的hash
 
-        for ii, i in enumerate(annotations['cws']['words_index'][cur_word_index:latter_word_index]):
+        for ii, i in enumerate(cws_list_index[cur_word_index:latter_word_index]):
+          sentence_word_index.append(self.words_dictionary[cws_list[cws_list_index.index(i)]])
           if entity_start.get(i) != None:
             entity_dict[entity_start[i]['id']] = ii
+
         arr = np.arange(0, latter_word_index - cur_word_index) + self.relation_batch_length - 1  # 位置索引baseline
         for primary_id in [e for e in entity_dict if e in primary_entity]:
           secondary_id = relation[primary_id][0]
@@ -297,7 +307,6 @@ class PrepareDataNer():
             secondary = entity_dict[secondary_id]
             # 无向
             if primary_id > secondary_id:
-              # primary, secondary = secondary, primary
               positive_relations.append(secondary_id + ':' + primary_id)
             else:
               positive_relations.append(primary_id + ':' + secondary_id)
@@ -311,14 +320,32 @@ class PrepareDataNer():
         pos += len(positive_relations)
         entities = list(entity_dict.keys())
         # 添加非关系，可认为是负采样
-        distance = 2
+        distance = 5
         if is_negative_relation:
           for entity_i, entity in enumerate(entities):
             secondaries = []
             for s in entities[:entity_i] + entities[entity_i + 1:]:
-              if entity < s:  # 无向
-                if entity + ':' + s not in positive_relations and abs(entity_dict[entity] - entity_dict[s]) < distance:
+              if self.relation_constraint.get(all_entities[entity]['category']) == None or \
+                      all_entities[s]['category'] not in self.relation_constraint[all_entities[entity]['category']]:
+                continue
+              if entity < s:
+                first, second = entity, s
+              else:
+                first, second = s, entity
+
+              first_index, second_index = entity_dict[entity], entity_dict[s]
+              if first_index > second_index:
+                first_index, second_index = second_index, first_index
+              for i in sentence_word_index[first_index:second_index + 1]:
+                if i in word_seg_index:
+                  second_index = i - 1
+
+              rel_hash = first + ':' + second
+              if rel_hash not in positive_relations and rel_hash not in current_relations:
+                if abs(entity_dict[first] - entity_dict[second]) < distance:
                   secondaries.append(s)
+                  current_relations.append(rel_hash)
+
             all_secondaries = [s for s in entities[:entity_i] + entities[entity_i + 1:]
                                if entity + ':' + s not in all_positive_relations]
             primary_start = entity_dict[entity]
