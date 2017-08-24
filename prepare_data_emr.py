@@ -325,9 +325,10 @@ class PrepareDataNer():
           for entity_i, entity in enumerate(entities):
             secondaries = []
             for s in entities[:entity_i] + entities[entity_i + 1:]:
-              if self.relation_constraint.get(all_entities[entity]['category']) == None or \
-                      all_entities[s]['category'] not in self.relation_constraint[all_entities[entity]['category']]:
+              secondary_constraint = self.relation_constraint.get(all_entities[entity]['category'])
+              if secondary_constraint == None or all_entities[s]['category'] not in secondary_constraint:
                 continue
+
               if entity < s:
                 first, second = entity, s
               else:
