@@ -185,6 +185,7 @@ class PrepareDataNer():
     entity_labels = []
     train_relations = []
     all_relations = []
+    relations = {}
     pos = 0
     neg = 0
     all_neg = 0
@@ -269,8 +270,10 @@ class PrepareDataNer():
         print(filename)
         print(len(seg_index) - len(word_seg_index))
 
-      for cur_index, latter_index, cur_word_index, latter_word_index in zip(seg_index[:-1], seg_index[1:],
-                                                                            word_seg_index[:-1], word_seg_index[1:]):
+      for sentence_index, (cur_index, latter_index, cur_word_index, latter_word_index) in enumerate(
+          zip(seg_index[:-1], seg_index[1:],
+              word_seg_index[:-1], word_seg_index[1:])):
+        sentence_id = filename + '-' + str(sentence_index)
         # 寻找最长句子
         if max_len < latter_word_index - cur_word_index:
           max_len = latter_word_index - cur_word_index
@@ -314,7 +317,12 @@ class PrepareDataNer():
             relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
                              'primary': arr - primary, 'secondary': arr - secondary,
                              'label': relation_label}
-            train_relations.append(relation_item)
+            # train_relations.append(relation_item)
+            if relations.get(sentence_id) == None:
+              relations[sentence_id] = [relation_item]
+            else:
+              relations[sentence_id].append(relation_item)
+
             all_relations.append(relation_item)
 
         pos += len(positive_relations)
@@ -362,7 +370,11 @@ class PrepareDataNer():
               relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
                                'primary': arr - primary_start, 'secondary': arr - entity_dict[s],
                                'label': relation_label}
-              train_relations.append(relation_item)
+              # train_relations.append(relation_item)
+              if relations.get(sentence_id) == None:
+                relations[sentence_id] = [relation_item]
+              else:
+                relations[sentence_id].append(relation_item)
             for s in all_secondaries:
               if is_relation_category:
                 relation_label = [0] * self.relation_category_label_count
@@ -376,6 +388,7 @@ class PrepareDataNer():
 
     print(neg / (pos + neg))
     print(all_neg / (pos + all_neg))
+    train_relations = [r for rs in relations.values() for r in rs]
     for i, chs in enumerate(characters_index):
       sentence = ''
       for ch in chs:
