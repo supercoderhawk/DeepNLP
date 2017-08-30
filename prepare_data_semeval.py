@@ -2,7 +2,7 @@
 import re
 import numpy as np
 import pickle
-
+from functools import reduce
 
 class PrepareDataSemeval:
   def __init__(self, batch_length=95, batch_size=50):
@@ -16,12 +16,12 @@ class PrepareDataSemeval:
     with open('corpus/semeval_relation_batches.rel', 'wb') as f:
       pickle.dump(self.batches, f)
     print(len(self.relation_categories))
-    print(self.batches[1]['sentence'].shape)
 
   def read_content(self):
     with open(self.path, 'r', encoding='utf8') as file:
       contents = file.read().split('\n\n')
       relation_categories = {'Other': 0}
+      relation_count = {'Other': 0}
       length = []
       relations = []
       for content in contents:
@@ -92,15 +92,20 @@ class PrepareDataSemeval:
           relation = re.search(r'([a-zA-Z-]*)\(', sections[1]).groups()[0]
           if relation not in relation_categories:
             relation_categories[relation] = len(relation_categories)
+            relation_count[relation] = 0
           primary, secondary = re.search(r'\((\S+),(\S+)\)', sections[1]).groups()
           if primary == 'e2' and secondary == 'e1':
             e1_index = words_index.index(e2_start)
             e2_index = words_index.index(e1_start)
         else:
           relation = 'Other'
+        relation_count[relation] += 1
         relations.append({'id': idx, 'words': words, 'primary': e1_index, 'secondary': e2_index,
                           'type': relation_categories[relation]})
 
+      print(relation_count)
+      print(relation_categories)
+      all_count = reduce(lambda a,b:a+b,relation_count.values())
       return relation_categories, relations
 
   def build_dictionary(self):
