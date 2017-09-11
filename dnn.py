@@ -9,7 +9,7 @@ from config import TrainMode
 
 
 class DNN(DNNBase):
-  def __init__(self, type='mlp', batch_size=50, batch_length=100, mode=TrainMode.Batch, is_seg=False):
+  def __init__(self, type='mlp', batch_size=10, batch_length=224, mode=TrainMode.Batch, is_seg=False):
     DNNBase.__init__(self)
     # 参数初始化
     self.dtype = tf.float64
@@ -19,8 +19,8 @@ class DNN(DNNBase):
     # self.vocab_size = 4000
     self.embed_size = 50
     self.hidden_units = 150
-    self.tags = [0, 1, 2, 3]
-    # self.tags = [0, 1, 2]
+    # self.tags = [0, 1, 2, 3]
+    self.tags = [0, 1, 2]
     self.tags_count = len(self.tags)
     self.concat_embed_size = self.window_size * self.embed_size
     self.learning_rate = 0.01
@@ -32,9 +32,12 @@ class DNN(DNNBase):
     self.is_seg = is_seg
     self.dropout_rate = 0.2
     # 数据初始化
-    pre = PreprocessData('pku', self.mode)
+    pre = PreprocessData('emr_ner', self.mode, force_generate=True)
     self.character_batches = pre.character_batches
     self.label_batches = pre.label_batches
+    if mode == TrainMode.Batch:
+      self.lengths = pre.lengths
+    print(self.character_batches.shape)
     self.dictionary = pre.dictionary
     self.vocab_size = len(self.dictionary)
     # 模型定义和初始化
@@ -61,8 +64,8 @@ class DNN(DNNBase):
                                            initializer=initializer)
     self.transition_holder = tf.placeholder(self.dtype, shape=self.transition.get_shape())
     self.transition_init_holder = tf.placeholder(self.dtype, shape=self.transition_init.get_shape())
-    self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
-    # self.optimizer = tf.train.AdagradOptimizer(0.5)
+    # self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
+    self.optimizer = tf.train.AdagradOptimizer(0.5)
     # self.optimizer = tf.train.MomentumOptimizer(0.01,0.9)
     # self.optimizer = tf.train.AdamOptimizer(0.0001)#,beta1=0.1,beta2=0.001)
     self.update_transition = self.transition.assign(
@@ -92,7 +95,6 @@ class DNN(DNNBase):
       self.b = tf.Variable(tf.zeros([self.tags_count, 1, 1], dtype=self.dtype), name='b')
       if self.mode == TrainMode.Batch:
         if not self.is_seg:
-          self.lengths = pre.lengths
           self.input = tf.placeholder(tf.int32, shape=[self.batch_size, self.batch_length, self.window_size])
           self.input_embeds = tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input),
                                          [self.batch_size, self.batch_length, self.concat_embed_size])
@@ -154,7 +156,7 @@ class DNN(DNNBase):
             print(time.time() - last_time)
             last_time = time.time()
         if self.type == 'mlp':
-          self.saver.save(self.sess, 'tmp/mlp-model%d.ckpt' % i)
+          self.saver.save(self.sess, 'tmp/mlp-ner-model%d.ckpt' % i)
         elif self.type == 'lstm':
           self.saver.save(self.sess, 'tmp/lstm-model%d.ckpt' % i)
     elif self.mode == TrainMode.Batch:
@@ -173,7 +175,7 @@ class DNN(DNNBase):
   def train_sentence(self, sentence, labels):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence})
     current_labels = self.viterbi(scores, self.transition.eval(session=self.sess),
-                                  self.transition_init.eval(session=self.sess))
+                                  self.transition_init.eval(session=self.sess),labels=labels)
     diff_tags = np.subtract(labels, current_labels)
     update_index = np.where(diff_tags != 0)[0]
     update_length = len(update_index)
@@ -245,7 +247,7 @@ class DNN(DNNBase):
         feed_dict[self.transition_init_current_holder] = trans_init_neg_indices
         self.sess.run(self.train_with_init, feed_dict)
 
-  def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False):
+  def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False, ner=False):
     self.saver.restore(self.sess, model_path)
     seq = self.index2seq(self.sentence2index(sentence))
     sentence_scores = self.sess.run(self.word_scores, feed_dict={self.input: seq})
@@ -254,14 +256,16 @@ class DNN(DNNBase):
     if debug:
       print(transition)
       embeds = self.sess.run(self.look_up, feed_dict={self.input: seq})
-      print(embeds[1])
+      print(sentence_scores)
       if self.type == 'lstm':
         output = self.sess.run(self.lstm_output, feed_dict={self.input: seq})
         print(output[-1, :, 10])
       print(self.transition_init.eval(session=self.sess))
-    current_labels = self.viterbi(sentence_scores, transition, transition_init, is_constraint=False)
-    return self.tags2words(sentence, current_labels), current_labels
-    # return self.tags2entities(sentence, current_labels), current_labels
+    current_labels = self.viterbi(sentence_scores, transition, transition_init)
+    if not ner:
+      return self.tags2words(sentence, current_labels), current_labels
+    else:
+      return self.tags2entities(sentence, current_labels), current_labels
     # return self.tags2category_entities(sentence, current_labels), current_labels
 
 

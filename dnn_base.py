@@ -37,7 +37,7 @@ class DNNBase(Base):
     return OrderedDict(zip(categories.values(), categories.keys())), OrderedDict(
       zip(category_labels_dict.values(), category_labels_dict.keys())), zh_categories
 
-  def viterbi(self, emission, A, init_A, return_score=False, is_constraint=False, labels=None):
+  def viterbi(self, emission, A, init_A, return_score=False, is_constraint=False, labels=None, size=4):
     """
     维特比算法的实现，所有输入和返回参数均为numpy数组对象
     :param emission: 发射概率矩阵，对应于本模型中的分数矩阵，4*length
@@ -55,7 +55,7 @@ class DNNBase(Base):
     path_score[:, 0] = init_A + emission[:, 0]
 
     if labels is not None:
-      for i in range(4):
+      for i in range(size):
         if i != labels[0]:
           path_score[i, 0] += self.hinge_discount
 

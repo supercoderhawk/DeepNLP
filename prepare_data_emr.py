@@ -8,7 +8,7 @@ from utils import plot_lengths
 
 
 class PrepareDataNer():
-  def __init__(self, entity_batch_length=225, relation_batch_length=85, entity_batch_size=10, relation_batch_size=50):
+  def __init__(self, entity_batch_length=224, relation_batch_length=85, entity_batch_size=10, relation_batch_size=50):
     self.entity_tags = {'O': 0, 'B': 1, 'I': 2, 'P': 3}
     self.entity_categories = {'Sign': 'SN', 'Symptom': 'SYM', 'Part': 'PT', 'Property': 'PTY', 'Degree': 'DEG',
                               'Quality': 'QLY', 'Quantity': 'QNY', 'Unit': 'UNT', 'Time': 'T', 'Date': 'DT',
@@ -60,19 +60,20 @@ class PrepareDataNer():
     self.annotations = self.read_annotation()
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
     self.words_dictionary = self.build_words_dictionary()
-    self.characters, self.entity_labels, self.relations, self.all_relations = self.build_dataset(True)
+    self.characters, self.entity_labels, self.relations, self.all_relations = self.build_dataset(
+      is_entity_category=False, is_negative_relation=False, is_relation_category=True)
     # self.plot_words_sentences()
-    np.save('corpus/emr_training_characters', self.characters)
-    np.save('corpus/emr_training_labels', self.entity_labels)
+    np.save('corpus/emr_ner_training_characters', self.characters)
+    np.save('corpus/emr_ner_training_labels', self.entity_labels)
     with open('corpus/emr_relations.rel', 'wb') as f:
       pickle.dump(self.relations, f)
     extra_count = len(self.characters) % self.entity_batch_size
     lengths = np.array(list(map(lambda item: len(item), self.characters[:-extra_count])), np.int32).reshape(
       [-1, self.entity_batch_size])
-    np.save('corpus/emr_training_lengths', lengths)
+    np.save('corpus/emr_ner_training_lengths', lengths)
     self.character_batches, self.label_batches = self.build_entity_batch()
-    np.save('corpus/emr_training_character_batches', self.character_batches)
-    np.save('corpus/emr_training_label_batches', self.label_batches)
+    np.save('corpus/emr_ner_training_character_batches', self.character_batches)
+    np.save('corpus/emr_ner_training_label_batches', self.label_batches)
     self.train_relation_batches = self.build_relation_batch(self.relations)
     self.all_relation_batches = self.build_relation_batch(self.relations)
     with open('corpus/emr_relation_batches.rel', 'wb') as f:
@@ -231,10 +232,10 @@ class PrepareDataNer():
           if len(content) > 1:
             entity_label[start + 1:end] = [self.entity_category_labels[self.entity_categories[type] + '_O']] * (
               end - start - 1)
-          else:
-            entity_label[start] = self.entity_tags['B']
-            if len(content) > 1:
-              entity_label[start + 1:end] = [self.entity_tags['I']] * (end - start - 1)
+        else:
+          entity_label[start] = self.entity_tags['B']
+          if len(content) > 1:
+            entity_label[start + 1:end] = [self.entity_tags['I']] * (end - start - 1)
 
       for relation_annotation in annotations['relations']:
         id = relation_annotation['id']

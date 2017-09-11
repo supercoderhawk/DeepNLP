@@ -3,7 +3,7 @@ import numpy as np
 import re
 import os
 import collections
-# from utils import strQ2B
+from utils import plot_lengths
 from config import CorpusType, TrainMode
 
 
@@ -54,8 +54,7 @@ class PrepareData:
         _, self.labels_index = self.build_dataset()
         np.save('corpus/' + corpus + '_test_labels', self.labels_index)
 
-    # self.sentence_lengths.sort()
-    # self.plot_lengths(self.sentence_lengths)
+    # plot_lengths(self.sentence_lengths)
 
   def read_lines(self):
     file = open(self.input_file, 'r', encoding='utf-8')
@@ -70,7 +69,7 @@ class PrepareData:
     dictionary = {}
     words = ''.join(self.lines).replace(' ', '')
     vocab_count = len(collections.Counter(words))
-    print(vocab_count)
+    print('characters count'+str(vocab_count))
     if vocab_count + self.init_count < self.vocab_size:
       return None
     self.count.extend(collections.Counter(words).most_common(self.vocab_size - self.init_count))
@@ -92,8 +91,8 @@ class PrepareData:
     for _, dict_item in enumerate(dict_arr):
       dictionary[dict_item[0]] = int(dict_item[1])
     dict_file.close()
-    if len(dictionary) < self.vocab_size:
-      return None
+    # if len(dictionary) < self.vocab_size:
+    #  return None
     reverse_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
     # else:
     #   reverse_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
@@ -182,9 +181,8 @@ class PrepareData:
     return sentence_batches, label_batches, lengths, sentences, labels, sentence_lengths
 
 
-
-
 if __name__ == '__main__':
-  PrepareData(4600, 'pku', mode=TrainMode.Batch)
-  PrepareData(4000, 'pku', type=CorpusType.Test, dict_path='corpus/pku_dict.utf8')
-  PrepareData(5000, 'msr', mode=TrainMode.Batch)
+  # PrepareData(4600, 'pku', mode=TrainMode.Batch)
+  # PrepareData(4000, 'pku', type=CorpusType.Test, dict_path='corpus/pku_dict.utf8')
+  # PrepareData(5000, 'msr', mode=TrainMode.Batch)
+  PrepareData(None, 'emr', dict_path='corpus/emr_dict.utf8',mode=TrainMode.Sentence)
