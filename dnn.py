@@ -9,18 +9,22 @@ from config import TrainMode
 
 
 class DNN(DNNBase):
-  def __init__(self, type='mlp', batch_size=10, batch_length=224, mode=TrainMode.Batch, is_seg=False):
+  def __init__(self, type='mlp', batch_size=10, batch_length=224, mode=TrainMode.Batch,task='cws', is_seg=False):
     DNNBase.__init__(self)
     # 参数初始化
-    self.dtype = tf.float64
+    self.dtype = tf.float32
     self.skip_window_left = 1
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
     # self.vocab_size = 4000
     self.embed_size = 50
     self.hidden_units = 150
-    # self.tags = [0, 1, 2, 3]
-    self.tags = [0, 1, 2]
+    if task == 'cws':
+      self.tags = [0, 1, 2, 3]
+    elif task == 'ner':
+      self.tags = [0, 1, 2]
+    else:
+      raise Exception('task name error')
     self.tags_count = len(self.tags)
     self.concat_embed_size = self.window_size * self.embed_size
     self.learning_rate = 0.01
@@ -35,9 +39,7 @@ class DNN(DNNBase):
     pre = PreprocessData('emr_ner', self.mode, force_generate=True)
     self.character_batches = pre.character_batches
     self.label_batches = pre.label_batches
-    if mode == TrainMode.Batch:
-      self.lengths = pre.lengths
-    print(self.character_batches.shape)
+    self.lengths = pre.lengths
     self.dictionary = pre.dictionary
     self.vocab_size = len(self.dictionary)
     # 模型定义和初始化
@@ -65,7 +67,7 @@ class DNN(DNNBase):
     self.transition_holder = tf.placeholder(self.dtype, shape=self.transition.get_shape())
     self.transition_init_holder = tf.placeholder(self.dtype, shape=self.transition_init.get_shape())
     # self.optimizer = tf.train.GradientDescentOptimizer(self.learning_rate)
-    self.optimizer = tf.train.AdagradOptimizer(0.5)
+    self.optimizer = tf.train.AdagradOptimizer(0.02)
     # self.optimizer = tf.train.MomentumOptimizer(0.01,0.9)
     # self.optimizer = tf.train.AdamOptimizer(0.0001)#,beta1=0.1,beta2=0.001)
     self.update_transition = self.transition.assign(
@@ -148,7 +150,8 @@ class DNN(DNNBase):
     if self.mode == TrainMode.Sentence:
       for i in range(epoches):
         print('epoch:%d' % i)
-        for sentence_index, (sentence, labels) in enumerate(zip(self.character_batches, self.label_batches)):
+        for sentence_index, (sentence, labels,length) in enumerate(zip(self.character_batches, self.label_batches,self.lengths)):
+          # self.train_sentence(sentence[:length], labels[:length])
           self.train_sentence(sentence, labels)
           self.sentence_index = sentence_index
           if sentence_index > 0 and sentence_index % 8000 == 0:
@@ -175,7 +178,7 @@ class DNN(DNNBase):
   def train_sentence(self, sentence, labels):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence})
     current_labels = self.viterbi(scores, self.transition.eval(session=self.sess),
-                                  self.transition_init.eval(session=self.sess),labels=labels)
+                                  self.transition_init.eval(session=self.sess),labels=labels,size=3)
     diff_tags = np.subtract(labels, current_labels)
     update_index = np.where(diff_tags != 0)[0]
     update_length = len(update_index)
@@ -247,9 +250,12 @@ class DNN(DNNBase):
         feed_dict[self.transition_init_current_holder] = trans_init_neg_indices
         self.sess.run(self.train_with_init, feed_dict)
 
-  def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False, ner=False):
+  def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False, ner=False, seq=False):
     self.saver.restore(self.sess, model_path)
-    seq = self.index2seq(self.sentence2index(sentence))
+    if not seq:
+      seq = self.index2seq(self.sentence2index(sentence))
+    else:
+      seq = sentence
     sentence_scores = self.sess.run(self.word_scores, feed_dict={self.input: seq})
     transition_init = self.transition_init.eval(session=self.sess)
     transition = self.transition.eval(session=self.sess)
@@ -270,6 +276,6 @@ class DNN(DNNBase):
 
 
 if __name__ == '__main__':
-  # dnn = DNN('mlp', mode=TrainMode.Sentence)
-  dnn = DNN('lstm')
+  dnn = DNN('mlp', mode=TrainMode.Sentence)
+  # dnn = DNN('lstm')
   dnn.train_exe()

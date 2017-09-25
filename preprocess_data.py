@@ -17,11 +17,12 @@ class PreprocessData:
     if mode == TrainMode.Sentence:
       self.characters = np.load(self.input_base + '_characters.npy')
       self.labels = np.load(self.input_base + '_labels.npy')
+      self.lengths = np.load(self.input_base + '_lengths.npy')
       self.character_batches, self.label_batches = self.generate_sentences()
     elif mode == TrainMode.Batch:
       self.characters = np.load(self.input_base + '_character_batches.npy')
       self.labels = np.load(self.input_base + '_label_batches.npy')
-      self.lengths = np.load(self.input_base + '_lengths.npy')
+      self.lengths = np.load(self.input_base + '_lengths_batches.npy')
       self.output_base = 'corpus/dnn/' + corpus + '_training'
       self.ouput_suffix = '_' + str(self.skip_window_left) + '_' + str(self.skip_window_right)
       if os.path.exists(self.output_base + '_character_batches' + self.ouput_suffix + '.npy') and not force_generate:

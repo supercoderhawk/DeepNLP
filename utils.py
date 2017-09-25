@@ -1,5 +1,6 @@
-#-*- coding: UTF-8 -*-
+# -*- coding: UTF-8 -*-
 import matplotlib.pyplot as plt
+
 
 def strQ2B(ustring):
   '''全角转半角'''
@@ -14,7 +15,8 @@ def strQ2B(ustring):
   return rstring
 
 
-def plot_lengths( lengths):
+def plot_lengths(lengths):
+  lengths = sorted(lengths)
   pre_i = lengths[0]
   count = []
   x = []
@@ -28,8 +30,9 @@ def plot_lengths( lengths):
       j = 0
       pre_i = i
 
-  print(len(list(filter(lambda l: l > 300, lengths))))
-  print(len(lengths))
+  # print(len(list(filter(lambda l: l > 300, lengths))))
+  print('count size: ' + str(len(lengths)))
+  print('max length: ' + str(lengths[-1]))
   x = range(len(count))
   plt.plot(x, count)
   plt.ylabel('长度')

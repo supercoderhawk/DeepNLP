@@ -21,13 +21,13 @@ class RECNN():
     self.dictionary = self.read_dictionary()
     self.words_size = len(self.dictionary)
     self.batch_path = 'corpus/emr_relation_batches.rel'
-    self.test_batch_path = 'corpus/emr_all_relation_batches.rel'
+    self.test_batch_path = 'corpus/emr_test_relations.rel'
     self.output_folder = 'tmp/re/'
     self.concat_embed_size = self.character_embed_size + 2 * self.position_embed_size
-    self.input_characters = tf.placeholder(tf.int32, [self.batch_size, self.batch_length])
-    self.input_position = tf.placeholder(tf.int32, [self.batch_size, self.batch_length])
-    self.input = tf.placeholder(self.dtype, [self.batch_size, self.batch_length, self.concat_embed_size, 1])
-    self.input_relation = tf.placeholder(self.dtype, [self.batch_size, self.relation_count])
+    self.input_characters = tf.placeholder(tf.int32, [None, self.batch_length])
+    self.input_position = tf.placeholder(tf.int32, [None, self.batch_length])
+    self.input = tf.placeholder(self.dtype, [None, self.batch_length, self.concat_embed_size, 1])
+    self.input_relation = tf.placeholder(self.dtype, [None, self.relation_count])
     self.position_embedding = self.weight_variable([2 * self.batch_length, self.position_embed_size])
     self.character_embedding = self.weight_variable([self.words_size, self.character_embed_size])
     self.conv_kernel = self.weight_variable([self.window_size, self.concat_embed_size, 1, self.filter_size])
@@ -37,11 +37,11 @@ class RECNN():
     self.position_lookup = tf.nn.embedding_lookup(self.position_embedding, self.input_position)
     self.character_lookup = tf.nn.embedding_lookup(self.character_embedding, self.input_characters)
     self.character_embed_holder = tf.placeholder(self.dtype,
-                                                 [self.batch_size, self.batch_length, self.character_embed_size])
+                                                 [None, self.batch_length, self.character_embed_size])
     self.primary_embed_holder = tf.placeholder(self.dtype,
-                                               [self.batch_size, self.batch_length, self.position_embed_size])
+                                               [None, self.batch_length, self.position_embed_size])
     self.secondary_embed_holder = tf.placeholder(self.dtype,
-                                                 [self.batch_size, self.batch_length, self.position_embed_size])
+                                                 [None, self.batch_length, self.position_embed_size])
     self.emebd_concat = tf.expand_dims(
       tf.concat([self.character_embed_holder, self.primary_embed_holder, self.secondary_embed_holder], 2), 3)
     self.hidden_layer = tf.layers.dropout(tf.squeeze(self.max_pooling(tf.nn.relu(self.conv() + self.bias))),
@@ -107,35 +107,48 @@ class RECNN():
     dict_file.close()
     return dictionary
 
-  def test(self):
+  def predict(self, sentences, primary_indies, secondary_indices):
     with tf.Session() as sess:
       self.saver.restore(sess, self.output_folder + 'cnn_emr_model3.ckpt')
-      batches = self.load_batches(self.test_batch_path)
-      neg = 0
-      all = 0
-      pos_pos = 0
-      pos_all = 0
+      character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],
+                                                  feed_dict={self.input_characters: sentences,
+                                                             self.input_position: primary_indies})
+      secondary_embeds = sess.run(self.position_lookup, feed_dict={self.input_position: secondary_indices})
+      input = sess.run(self.emebd_concat, feed_dict={self.character_embed_holder: character_embeds,
+                                                     self.primary_embed_holder: primary_embeds,
+                                                     self.secondary_embed_holder: secondary_embeds})
+      output = sess.run(self.output, feed_dict={self.input: input})
+      return np.argmax(output, 1)
 
-      for i in range(100):
-        batch = batches[i]
+  def evaluate(self, model_file):
+    with tf.Session() as sess:
+      self.saver.restore(sess, self.output_folder + model_file)
+      items = self.load_batches(self.test_batch_path)
+      corr_count = [0] * self.relation_count
+      prec_count = [0] * self.relation_count
+      recall_count = [0] * self.relation_count
+
+      for item in items:
         character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],
-                                                    feed_dict={self.input_characters: batch['sentence'],
-                                                               self.input_position: batch['primary']})
-        secondary_embeds = sess.run(self.position_lookup, feed_dict={self.input_position: batch['secondary']})
+                                                    feed_dict={self.input_characters: item['sentence'],
+                                                               self.input_position: item['primary']})
+        secondary_embeds = sess.run(self.position_lookup, feed_dict={self.input_position: item['secondary']})
         input = sess.run(self.emebd_concat, feed_dict={self.character_embed_holder: character_embeds,
                                                        self.primary_embed_holder: primary_embeds,
                                                        self.secondary_embed_holder: secondary_embeds})
-        output = sess.run(self.output, feed_dict={self.input: input})
-        index = np.nonzero(batch['label'][:, 1])[0]
-        pos_pos += np.intersect1d(index, np.nonzero(np.argmax(output, 1))[0]).shape[0]
-        pos_all += index.shape[0]
-        neg += np.count_nonzero(np.argmax(output, 1) - np.argmax(batch['label'], 1))
-        all += self.batch_size
+        output = np.squeeze(sess.run(self.output, feed_dict={self.input: input}))
+        target = np.nonzero(item['label'])[0][0]
+        current = np.argmax(output)
+        print(target, current)
+        if target == current:
+          corr_count[target] += 1
+        prec_count[current] += 1
+        recall_count[target] += 1
 
-      prec = 1 - neg / all
-      pos_prec = pos_pos / pos_all
-      print(prec)
-      print(pos_prec)
+    prec = sum([c / p for c, p in zip(corr_count, prec_count)]) / self.relation_count
+    recall = sum([c / r for c, r in zip(corr_count, recall_count)]) / self.relation_count
+    print('precision:', prec)
+    print('recall:', recall)
 
 
 if __name__ == '__main__':

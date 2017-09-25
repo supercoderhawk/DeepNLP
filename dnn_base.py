@@ -203,20 +203,27 @@ class DNNBase(Base):
 
     return words
 
-  def tags2entities(self, sentence, tags):
+  def tags2entities(self, sentence, tags, return_start=True):
     entities = []
+    entity_starts = []
     entity = ''
+
     for tag_index, tag in enumerate(tags):
       if tag == 0:
         continue
       elif tag == 1:
-        entities.append(entity)
+        if entity:
+          entities.append(entity)
         entity = sentence[tag_index]
+        entity_starts.append(tag_index)
       else:
         entity += sentence[tag_index]
     if entity != '':
       entities.append(entity)
-    return entities
+    if return_start:
+      return entities,entity_starts
+    else:
+      return entities
 
   def tags2category_entities(self, sentence, tags):
     entities = []

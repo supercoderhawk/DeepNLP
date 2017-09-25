@@ -43,10 +43,12 @@ class PrepareDataNer():
     self.relation_category_label_count = len(self.relation_category_labels)
     self.relation_labels = {'Y': 1, 'N': 0}
     self.relation_label_count = len(self.relation_labels)
-    self.base_folder = 'corpus/emr/'
+    self.base_folder = 'corpus/emr_paper/train/'
+    self.test_base_folder = 'corpus/emr_paper/test/'
     self.filenames = []
+    self.test_filenames = []
     self.ext_dict_path = ['corpus/msr_dict.utf8', 'corpus/pku_dict.utf8']
-    self.dict_path = 'corpus/emr_dict.utf8'
+    self.dict_path = 'corpus/emr_ner_dict.utf8'
     self.words_dict_path = 'corpus/emr_words_dict.utf8'
     self.entity_batch_length = entity_batch_length
     self.relation_batch_length = relation_batch_length
@@ -57,36 +59,63 @@ class PrepareDataNer():
         filename, _ = os.path.splitext(filename)
         if filename not in self.filenames:
           self.filenames.append(filename)
-    self.annotations = self.read_annotation()
+    for _, _, filenames in os.walk(self.test_base_folder):
+      for filename in filenames:
+        filename, _ = os.path.splitext(filename)
+        if filename not in self.test_filenames:
+          self.test_filenames.append(filename)
+    self.words = set()
+    self.content = ''
+    self.annotations = self.read_annotation(self.base_folder, self.filenames)
+    self.test_annotations = self.read_annotation(self.test_base_folder, self.test_filenames)
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
     self.words_dictionary = self.build_words_dictionary()
-    self.characters, self.entity_labels, self.relations, self.all_relations = self.build_dataset(
-      is_entity_category=False, is_negative_relation=False, is_relation_category=True)
+    # 二分类
+    _, _, _, self.all_relations = self.build_dataset(self.filenames, self.annotations, is_entity_category=False)
+    # 多分类
+    self.characters, self.entity_labels, self.relations, _ = self.build_dataset(self.filenames, self.annotations,
+                                                                                is_entity_category=False,
+                                                                                is_negative_relation=False,
+                                                                                is_relation_category=True)
+
+    self.test_characters, self.test_entity_labels, self.test_relations, self.test_all_relations = self.build_dataset(
+      self.test_filenames,
+      self.test_annotations,
+      is_entity_category=False,
+      is_negative_relation=True,
+      is_relation_category=True)
     # self.plot_words_sentences()
     np.save('corpus/emr_ner_training_characters', self.characters)
     np.save('corpus/emr_ner_training_labels', self.entity_labels)
-    with open('corpus/emr_relations.rel', 'wb') as f:
+    np.save('corpus/emr_ner_test_characters', self.test_characters)
+    np.save('corpus/emr_ner_test_labels', self.test_entity_labels)
+    with open('corpus/emr_training_relations.rel', 'wb') as f:
       pickle.dump(self.relations, f)
+
     extra_count = len(self.characters) % self.entity_batch_size
     lengths = np.array(list(map(lambda item: len(item), self.characters[:-extra_count])), np.int32).reshape(
       [-1, self.entity_batch_size])
-    np.save('corpus/emr_ner_training_lengths', lengths)
+    np.save('corpus/emr_ner_training_lengths_batches', lengths)
     self.character_batches, self.label_batches = self.build_entity_batch()
     np.save('corpus/emr_ner_training_character_batches', self.character_batches)
     np.save('corpus/emr_ner_training_label_batches', self.label_batches)
-    self.train_relation_batches = self.build_relation_batch(self.relations)
-    self.all_relation_batches = self.build_relation_batch(self.relations)
+    self.train_relation_batches = self.build_relation_batch(self.relations, self.relation_batch_size)
+    self.all_relation_batches = self.build_relation_batch(self.all_relations, self.relation_batch_size)
+    self.test_relation_batches = self.build_relation_batch(self.test_all_relations, 1)
     with open('corpus/emr_relation_batches.rel', 'wb') as f:
       pickle.dump(self.train_relation_batches, f)
     with open('corpus/emr_all_relation_batches.rel', 'wb') as f:
       pickle.dump(self.all_relation_batches, f)
+    with open('corpus/emr_test_all_relations.rel', 'wb') as f:
+      pickle.dump(self.test_relation_batches, f)
 
-  def read_annotation(self):
+  def read_annotation(self, base_folder, filenames):
     annotation = {}
-    for filename in self.filenames:
-      with open(self.base_folder + filename + '.txt', encoding='utf8') as raw_file:
+    for filename in filenames:
+      with open(base_folder + filename + '.txt', encoding='utf8') as raw_file:
         raw_text = raw_file.read().replace('\n', '\r\n')
-      with open(self.base_folder + filename + '.ann', encoding='utf8') as annotation_file:
+        self.content += raw_text
+      with open(base_folder + filename + '.ann', encoding='utf8') as annotation_file:
         results = annotation_file.read().replace('\t', ' ').splitlines()
         annotation_results = {'entity': {}, 'relations': [], 'entity_start': {}, 'cws': {}}
 
@@ -101,13 +130,14 @@ class PrepareDataNer():
             relation = {'id': sections[0], 'category': sections[1], 'primary': sections[2].split(':')[-1],
                         'secondary': sections[3].split(':')[-1]}
             annotation_results['relations'].append(relation)
-        with open(self.base_folder + filename + '.cws', encoding='utf8') as cws_file:
+        with open(base_folder + filename + '.cws', encoding='utf8') as cws_file:
           words = cws_file.read().strip().split('  ')
           lengths = [0]
 
           for i, w in enumerate(words):
             lengths.append(lengths[-1] + len(w))
             words[i] = words[i].replace('\n', '')
+            self.words.add(words[i])
 
           # 验证
           for e in annotation_results['entity'].values():
@@ -130,11 +160,8 @@ class PrepareDataNer():
       d = self.read_dictionary(dict_path)
       characters.extend(d.keys())
 
-    content = ''
-    for filename in self.filenames:
-      content += self.annotations[filename]['raw']
     # print(len(list(content)) / 1024)
-    characters.extend(list(content.replace('\r\n', '')))
+    characters.extend(list(self.content.replace('\r\n', '')))
     characters = list(
       filter(lambda ch: ch != 'UNK' and ch != 'STRT' and ch != 'END' and ch != 'BATCH_PAD', set(characters)))
     dictionary['BATCH_PAD'] = 0
@@ -152,13 +179,11 @@ class PrepareDataNer():
   def build_words_dictionary(self):
     words = set()
     words_dictionary = {'BATCH_PAD': 0, 'UNK': 1}
-    for filename in self.annotations:
-      for word in self.annotations[filename]['annotation']['cws']['words']:
-        words.add(word)
+
     with open(self.words_dict_path, 'w', encoding='utf8') as dict_path:
       dict_path.write('BATCH_PAD 0\n')
       dict_path.write('UNK 1\n')
-      for w in words:
+      for w in self.words:
         if len(w) > 0:
           words_dictionary[w] = len(words_dictionary)
           dict_path.write(w + ' ' + str(words_dictionary[w]) + '\n')
@@ -176,7 +201,8 @@ class PrepareDataNer():
     dict_file.close()
     return dictionary
 
-  def build_dataset(self, is_entity_category=False, is_relation_category=False, is_negative_relation=True):
+  def build_dataset(self, filenames, ann, is_entity_category=False, is_relation_category=False,
+                    is_negative_relation=True):
     rn = ['\r', '\n']
     seg = [self.dictionary['。']]
     seg_in_sentence = [self.dictionary[',']]
@@ -192,9 +218,9 @@ class PrepareDataNer():
     all_neg = 0
     max_len = 0
 
-    for filename in self.filenames:
-      raw_text = self.annotations[filename]['raw']
-      annotations = self.annotations[filename]['annotation']
+    for filename in filenames:
+      raw_text = ann[filename]['raw']
+      annotations = ann[filename]['annotation']
       cws_list = annotations['cws']['words']
       cws_list_index = annotations['cws']['words_index']
       entity_start = annotations['entity_start']
@@ -422,7 +448,7 @@ class PrepareDataNer():
     labels = np.array(labels[:-extra_count], np.int32).reshape([-1, self.entity_batch_size, self.entity_batch_length])
     return characters, labels
 
-  def build_relation_batch(self, relations):
+  def build_relation_batch(self, relations, batch_size):
     relation_batches = []
     sentence_batch = []
     primary_batch = []
@@ -450,7 +476,17 @@ class PrepareDataNer():
       secondary_batch.append(secondary)
       label_batch.append(relation['label'])
       index += 1
-      if index > 0 and index % self.relation_batch_size == 0:
+      if batch_size != 1:
+        if index > 0 and index % self.relation_batch_size == 0:
+          batch = {'sentence': np.array(sentence_batch, np.int32), 'primary': np.array(primary_batch, np.int32),
+                   'secondary': np.array(secondary_batch, np.int32), 'label': np.array(label_batch, np.float32)}
+          relation_batches.append(batch)
+          sentence_batch.clear()
+          primary_batch.clear()
+          secondary_batch.clear()
+          label_batch.clear()
+          index = 0
+      else:
         batch = {'sentence': np.array(sentence_batch, np.int32), 'primary': np.array(primary_batch, np.int32),
                  'secondary': np.array(secondary_batch, np.int32), 'label': np.array(label_batch, np.float32)}
         relation_batches.append(batch)
@@ -458,7 +494,6 @@ class PrepareDataNer():
         primary_batch.clear()
         secondary_batch.clear()
         label_batch.clear()
-        index = 0
     return relation_batches
 
 

@@ -8,7 +8,7 @@ from config import CorpusType, TrainMode
 
 
 class PrepareData:
-  def __init__(self, vocab_size, corpus, batch_length=100, batch_size=50, dict_path=None, mode=TrainMode.Batch,
+  def __init__(self, vocab_size, corpus, batch_length=224, batch_size=50, dict_path=None, mode=TrainMode.Batch,
                type=CorpusType.Train):
     self.vocab_size = vocab_size
     self.dict_path = dict_path
@@ -39,13 +39,15 @@ class PrepareData:
     if type == CorpusType.Train:
       self.characters_index, self.labels_index = self.build_dataset()
       if mode == TrainMode.Sentence:
+        self.characters_index, self.labels_index, self.lengths = self.build_batch(trunc=False)
         np.save(self.output_base + 'characters', self.characters_index)
         np.save(self.output_base + 'labels', self.labels_index)
+        np.save(self.output_base + 'lengths', self.lengths)
       elif mode == TrainMode.Batch:
         self.character_batches, self.label_batches, self.lengths, self.sentences, self.sentence_labels, self.sentence_lengths = self.build_batch()
         np.save(self.output_base + 'character_batches', self.character_batches)
         np.save(self.output_base + 'label_batches', self.label_batches)
-        np.save(self.output_base + 'lengths', self.lengths)
+        np.save(self.output_base + 'lengths_batches', self.lengths)
     elif type == CorpusType.Test:
       self.raw_lines = list(map(lambda s: s.replace(self.SPLIT_CHAR, ''), self.lines))
       if os.path.exists('corpus/' + corpus + '_test_labels.npy'):
@@ -127,7 +129,7 @@ class PrepareData:
       labels_index.append(sentence_label)
     return np.array(sentence_index), np.array(labels_index)
 
-  def build_batch(self):
+  def build_batch(self, trunc = True):
     sentence_batches = []
     label_batches = []
     sentence_lengths = []
@@ -172,17 +174,20 @@ class PrepareData:
             label_batches.append(sentence_labels[:self.batch_length])
             lengths.append(self.batch_length)
 
-    extra_count = len(sentence_batches) % self.batch_size
-    sentence_batches = np.array(sentence_batches[:-extra_count], dtype=np.int32).reshape(
-      [-1, self.batch_size, self.batch_length])
-    label_batches = np.array(label_batches[:-extra_count], dtype=np.int32).reshape(
-      [-1, self.batch_size, self.batch_length])
-    lengths = np.array(lengths[:-extra_count], dtype=np.int32).reshape([-1, self.batch_size])
-    return sentence_batches, label_batches, lengths, sentences, labels, sentence_lengths
+    if trunc:
+      extra_count = len(sentence_batches) % self.batch_size
+      sentence_batches = np.array(sentence_batches[:-extra_count], dtype=np.int32).reshape(
+        [-1, self.batch_size, self.batch_length])
+      label_batches = np.array(label_batches[:-extra_count], dtype=np.int32).reshape(
+        [-1, self.batch_size, self.batch_length])
+      lengths = np.array(lengths[:-extra_count], dtype=np.int32).reshape([-1, self.batch_size])
+      return sentence_batches, label_batches, lengths, sentences, labels, sentence_lengths
+    else:
+      return np.array(sentence_batches, dtype=np.int32),np.array(label_batches, dtype=np.int32), np.array(lengths,dtype=np.int32)
 
 
 if __name__ == '__main__':
   # PrepareData(4600, 'pku', mode=TrainMode.Batch)
   # PrepareData(4000, 'pku', type=CorpusType.Test, dict_path='corpus/pku_dict.utf8')
   # PrepareData(5000, 'msr', mode=TrainMode.Batch)
-  PrepareData(None, 'emr', dict_path='corpus/emr_dict.utf8',mode=TrainMode.Sentence)
+  PrepareData(None, 'emr',mode=TrainMode.Sentence)
