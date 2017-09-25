@@ -1,6 +1,7 @@
 # -*- coding: UTF-8 -*-
 import os
 from shutil import copyfile
+import re
 
 
 def extract_cws_file():
@@ -52,7 +53,38 @@ def merge_cws_file():
     f.write(content)
 
 
+def merge_emr():
+  base_folder = 'corpus/admission-annotation/'
+  ext_name = '.txt'
+  files = set()
+  sentences = []
+  for i in os.listdir(base_folder):
+    files.add(i[:i.index('.')])
+  for i in files:
+    with open(base_folder + i + ext_name, encoding='utf8') as f:
+      content = f.read().replace('\n', '')
+      index = [m.start() for m in re.finditer('。', content)]
+      l = len(content)
+      sentence = ''
+      for beg, end in zip([-1] + index[:-1], index):
+        if end - beg <= 1:
+          continue
+        if end != l - 1:
+          if content[end + 1] != '”':
+            sentences.append(sentence + content[beg + 1:end + 1])
+            sentence = ''
+          else:
+            sentence = content[beg + 1:end + 1]
+        else:
+          sentences.append(sentence + content[beg + 1:end + 1])
+  l = [len(l) for l in sentences]
+  print(max(l), min(l))
+  with open('corpus/emr.txt', 'w', encoding='utf8') as f:
+    f.write('\n'.join(sentences))
+
+
 if __name__ == '__main__':
   # extract_cws_file()
   # transfer_cws_file()
-  merge_cws_file()
+  # merge_cws_file()
+  merge_emr()

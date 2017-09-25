@@ -17,7 +17,7 @@ class DNN(DNNBase):
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
     # self.vocab_size = 4000
-    self.embed_size = 50
+    self.embed_size = 100
     self.hidden_units = 150
     if task == 'cws':
       self.tags = [0, 1, 2, 3]
@@ -145,7 +145,7 @@ class DNN(DNNBase):
   def train_exe(self):
     tf.global_variables_initializer().run(session=self.sess)
     self.sess.graph.finalize()
-    epoches = 200
+    epoches = 50
     last_time = time.time()
     if self.mode == TrainMode.Sentence:
       for i in range(epoches):
@@ -159,9 +159,9 @@ class DNN(DNNBase):
             print(time.time() - last_time)
             last_time = time.time()
         if self.type == 'mlp':
-          self.saver.save(self.sess, 'tmp/mlp-ner-model%d.ckpt' % i)
+          self.saver.save(self.sess, 'tmp/mlp-ner-model%d.ckpt'.format(i+1))
         elif self.type == 'lstm':
-          self.saver.save(self.sess, 'tmp/lstm-model%d.ckpt' % i)
+          self.saver.save(self.sess, 'tmp/lstm-ner-model%d.ckpt'.format(i+1))
     elif self.mode == TrainMode.Batch:
       for i in range(epoches):
         self.step = i
@@ -173,7 +173,7 @@ class DNN(DNNBase):
             print(batch_index)
             print(time.time() - last_time)
             last_time = time.time()
-        self.saver.save(self.sess, 'tmp/lstm-model%d.ckpt' % i)
+        self.saver.save(self.sess, 'tmp/lstm-ner-model%d.ckpt'.format(i+1))
 
   def train_sentence(self, sentence, labels):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence})
@@ -276,6 +276,7 @@ class DNN(DNNBase):
 
 
 if __name__ == '__main__':
-  dnn = DNN('mlp', mode=TrainMode.Sentence)
-  # dnn = DNN('lstm')
+  dnn = DNN('mlp', mode=TrainMode.Sentence, task='ner')
+  dnn.train_exe()
+  dnn = DNN('lstm', mode=TrainMode.Sentence, task='ner')
   dnn.train_exe()
