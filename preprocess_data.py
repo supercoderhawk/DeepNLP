@@ -6,7 +6,7 @@ from config import CorpusType, TrainMode
 
 class PreprocessData:
   def __init__(self, corpus, mode, type=CorpusType.Train,force_generate=True):
-    self.skip_window_left = 1
+    self.skip_window_left = 0
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
     self.dict_path = 'corpus/' + corpus + '_dict.utf8'
