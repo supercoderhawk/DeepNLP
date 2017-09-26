@@ -7,17 +7,16 @@ from transform_data_w2v import TransformDataW2V
 
 
 class Word2Vec:
-  def __init__(self, output, batch_size=128, num_skips=2, skip_window=1, vocab_size=constant.VOCAB_SIZE, embed_size=50,
-               num_sampled=64, steps=100000):
+  def __init__(self, output, batch_size=128, skip_window=1, embed_size=100,dict_path='corpus/emr_ner_dict.utf8',
+               num_sampled=64, steps=25000):
     self.output = output
     self.batch_size = batch_size
-    self.num_skips = num_skips
     self.skip_window = skip_window
-    self.vocab_size = vocab_size
     self.embed_size = embed_size
     self.num_sampled = num_sampled
     self.steps = steps
-    self.tran = TransformDataW2V(self.batch_size, self.num_skips, self.skip_window)
+    self.tran = TransformDataW2V(self.batch_size, self.skip_window,dict_path=dict_path)
+    self.vocab_size = len(self.tran.dictionary)
     self.embeddings = tf.Variable(tf.random_uniform([self.vocab_size, self.embed_size], -1.0, 1.0))
 
   def train(self):
@@ -34,7 +33,7 @@ class Word2Vec:
     loss = tf.reduce_mean(
       tf.nn.nce_loss(weights=nce_weights, biases=nce_biases, labels=train_labels, inputs=embed,
                      num_sampled=self.num_sampled, num_classes=self.vocab_size))
-    optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
+    optimizer = tf.train.GradientDescentOptimizer(0.2).minimize(loss)
 
     with tf.Session() as sess:
       tf.global_variables_initializer().run()
@@ -69,5 +68,5 @@ class Word2Vec:
 
 
 if __name__ == '__main__':
-  w2v = Word2Vec('corpus/lstm/embeddings', embed_size=100)
+  w2v = Word2Vec('corpus/embed/embeddings', embed_size=100)
   w2v.train()
