@@ -22,8 +22,8 @@ def evaluate_mlp():
 
 
 def evaluate_mlp_ner():
-  cws = DNN('mlp', mode=TrainMode.Sentence, is_seg=True)
-  model = 'tmp/mlp-ner-model10.ckpt'
+  cws = DNN('mlp', mode=TrainMode.Sentence, is_seg=True, task='ner')
+  model = 'tmp/mlp/mlp-ner-model1.ckpt'
   # print(cws.seg('在中国致公党第十一次全国代表大会隆重召开之际，中国共产党中央委员会谨向大会表示热烈的祝贺，向致公党的同志们', model,ner=True))
   print(cws.seg('多饮多尿多食', model, ner=True))
   print(cws.seg('无明显小便泡沫增多,伴有夜尿3次。', model, ner=True))
@@ -105,15 +105,17 @@ def estimate_ner(current_labels, correct_labels):
   corr_start = -2
   curr_start = -2
 
+  # print('curr',current_labels)
+  # print('corr', correct_labels)
   for label_index, (curr_label, corr_label) in enumerate(zip(current_labels, correct_labels)):
-    if corr_label == 0:
+    if corr_label == 1:
       corr_start = label_index
       if corr_start == label_index - 1:
         corr_dict[corr_start] = 1
     elif label_index > 0 and corr_label == 2 and correct_labels[label_index - 1] != 2:
       corr_dict[corr_start] = label_index - corr_start
 
-    if curr_label == 0:
+    if curr_label == 1:
       curr_start = label_index
       if curr_start == label_index - 1:
         curr_dict[curr_start] = 1
@@ -130,7 +132,7 @@ def estimate_ner(current_labels, correct_labels):
   return corr_count, prec_length,recall_length
 
 if __name__ == '__main__':
-  evaluate_mlp()
-  # evaluate_mlp_ner()
+  # evaluate_mlp()
+  evaluate_mlp_ner()
   # evaluate_lstm()
   # evaludate_RECNN()

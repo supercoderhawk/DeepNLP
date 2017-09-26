@@ -10,10 +10,11 @@ from config import TrainMode
 
 class DNN(DNNBase):
   def __init__(self, type='mlp', batch_size=10, batch_length=224, mode=TrainMode.Batch,task='cws', is_seg=False):
+    tf.reset_default_graph()
     DNNBase.__init__(self)
     # 参数初始化
     self.dtype = tf.float32
-    self.skip_window_left = 1
+    self.skip_window_left = 0
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
     # self.vocab_size = 4000
@@ -57,7 +58,6 @@ class DNN(DNNBase):
     #  tf.truncated_normal([self.tags_count, self.hidden_units], stddev=1.0 / math.sqrt(self.concat_embed_size),
     #                      dtype=self.dtype), name='w')
     self.w = tf.get_variable('w', [self.tags_count, self.hidden_units], dtype=self.dtype, initializer=initializer)
-    self.b = tf.Variable(tf.zeros([self.tags_count, 1], dtype=self.dtype), name='b')
     # self.transition = tf.Variable(tf.random_uniform([self.tags_count, self.tags_count], -0.2, 0.2, dtype=self.dtype))
     # self.transition_init = tf.Variable(tf.random_uniform([self.tags_count], -0.2, 0.2, dtype=self.dtype))
     self.transition = tf.get_variable('transition', [self.tags_count, self.tags_count], dtype=self.dtype,
@@ -77,8 +77,10 @@ class DNN(DNNBase):
       tf.add((1 - self.learning_rate * self.lam) * self.transition_init,
              self.learning_rate * self.transition_init_holder))
     self.look_up = tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input), [-1, self.concat_embed_size])
-    self.params = [self.w, self.b, self.embeddings]
+    self.params = [self.w, self.embeddings]
     if type == 'mlp':
+      self.b = tf.Variable(tf.zeros([self.tags_count, 1], dtype=self.dtype), name='b')
+      self.params.append(self.b)
       self.input_embeds = tf.transpose(tf.reshape(tf.nn.embedding_lookup(self.embeddings, self.input),
                                                   [-1, self.concat_embed_size]))
       self.hidden_w = tf.Variable(
@@ -95,6 +97,7 @@ class DNN(DNNBase):
     elif type == 'lstm':
       self.lstm = tf.nn.rnn_cell.BasicLSTMCell(self.hidden_units)
       self.b = tf.Variable(tf.zeros([self.tags_count, 1, 1], dtype=self.dtype), name='b')
+      self.params.append(self.b)
       if self.mode == TrainMode.Batch:
         if not self.is_seg:
           self.input = tf.placeholder(tf.int32, shape=[self.batch_size, self.batch_length, self.window_size])
@@ -159,9 +162,9 @@ class DNN(DNNBase):
             print(time.time() - last_time)
             last_time = time.time()
         if self.type == 'mlp':
-          self.saver.save(self.sess, 'tmp/lstm/mlp-ner-model%d.ckpt'.format(i+1))
+          self.saver.save(self.sess, 'tmp/mlp/mlp-ner-model{0}.ckpt'.format(i+1))
         elif self.type == 'lstm':
-          self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model%d.ckpt'.format(i+1))
+          self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model{0}.ckpt'.format(i+1))
     elif self.mode == TrainMode.Batch:
       for i in range(epoches):
         self.step = i
@@ -173,7 +176,7 @@ class DNN(DNNBase):
             print(batch_index)
             print(time.time() - last_time)
             last_time = time.time()
-        self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model%d.ckpt'.format(i+1))
+        self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model{0}.ckpt'.format(i+1))
 
   def train_sentence(self, sentence, labels):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence})
@@ -250,12 +253,17 @@ class DNN(DNNBase):
         feed_dict[self.transition_init_current_holder] = trans_init_neg_indices
         self.sess.run(self.train_with_init, feed_dict)
 
-  def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False, ner=False, seq=False):
+  def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False, ner=False, trans=False):
     self.saver.restore(self.sess, model_path)
-    if not seq:
-      seq = self.index2seq(self.sentence2index(sentence))
+    if not trans:
+      s = self.sentence2index(sentence)
     else:
-      seq = sentence
+      if isinstance(sentence, np.ndarray):
+        s = sentence.tolist()
+      else:
+        s = sentence
+    seq = self.index2seq(s)
+
     sentence_scores = self.sess.run(self.word_scores, feed_dict={self.input: seq})
     transition_init = self.transition_init.eval(session=self.sess)
     transition = self.transition.eval(session=self.sess)

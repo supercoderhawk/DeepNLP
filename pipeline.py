@@ -8,17 +8,17 @@ from evaluate import estimate_ner
 
 def get_cws(content, model_name):
   dnn = DNN('mlp', mode=TrainMode.Sentence, task='ner')
-  ner = dnn.seg(content, model_path=model_name, ner=True, seq=True)[0]
+  ner = dnn.seg(content, model_path=model_name, ner=True, trans=True)[1]
   return ner
 
 
 def get_ner(content, model_name):
-  if model_name.startswith('mlp'):
-    dnn = DNN('mlp', mode=TrainMode.Sentence, task='ner')
+  if model_name.startswith('tmp/mlp'):
+    dnn = DNN('mlp', mode=TrainMode.Sentence, task='ner', is_seg=True)
   else:
-    dnn = DNN('lstm', mode=TrainMode.Batch, task='ner')
-  ner = dnn.seg(content, model_path=model_name, ner=True, seq=True)[0]
-  return ner
+    dnn = DNN('lstm', mode=TrainMode.Batch, task='ner', is_seg=True)
+  ner = dnn.seg(content, model_path=model_name, ner=True, trans=True)
+  return ner[1]
 
 
 def get_relation():
@@ -39,23 +39,23 @@ def evaluate_ner(model_name):
     corr_count += c_count
     prec_count += p_count
     recall_count += r_count
-
+  print(corr_count, prec_count,recall_count)
   prec = corr_count / prec_count
   recall = corr_count / recall_count
   f1 = 2 * prec * recall / (prec + recall)
   print('precision:', prec)
-  print('precision:', recall)
+  print('recall:', recall)
   print('F1 score:', f1)
 
 
 def evaluate_re():
   re_two = RECNN(2)
   re_multi = RECNN(29)
-  re_two.evaluate('cnn_emr_model3.ckpt')
-  re_multi.evaluate('cnn_emr_model3.ckpt')
+  re_two.evaluate('tmp/re_two/cnn_emr_model100.ckpt')
+  re_multi.evaluate('tmp/re_multi/cnn_emr_model100.ckpt')
 
 
 if __name__ == '__main__':
-  evaluate_ner('mlp-ner-model50.ckpt')
-  evaluate_ner('lstm-ner-model50.ckpt')
+  evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
+  evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
   evaluate_re()

@@ -5,9 +5,10 @@ import pickle
 
 
 class RECNN():
-  def __init__(self, relation_count=2, batch_size=50, batch_length=85):
+  def __init__(self, relation_count=2, window_size=(3,), batch_size=50, batch_length=85):
+    tf.reset_default_graph()
     self.dtype = tf.float32
-    self.window_size = 3
+    self.window_size = window_size
     self.filter_size = 150
     self.relation_count = relation_count
     self.batch_length = batch_length
@@ -20,9 +21,15 @@ class RECNN():
     self.dict_path = 'corpus/emr_words_dict.utf8'
     self.dictionary = self.read_dictionary()
     self.words_size = len(self.dictionary)
-    self.batch_path = 'corpus/emr_relation_batches.rel'
+    if relation_count == 2:
+      self.batch_path = 'corpus/emr_all_relation_batches.rel'
+      self.output_folder = 'tmp/re_two/'
+    elif relation_count == 29:
+      self.batch_path = 'corpus/emr_relation_batches.rel'
+      self.output_folder = 'tmp/re_mutli/'
+    else:
+      raise Exception('relation count error')
     self.test_batch_path = 'corpus/emr_test_relations.rel'
-    self.output_folder = 'tmp/re/'
     self.concat_embed_size = self.character_embed_size + 2 * self.position_embed_size
     self.input_characters = tf.placeholder(tf.int32, [None, self.batch_length])
     self.input_position = tf.placeholder(tf.int32, [None, self.batch_length])
@@ -30,8 +37,8 @@ class RECNN():
     self.input_relation = tf.placeholder(self.dtype, [None, self.relation_count])
     self.position_embedding = self.weight_variable([2 * self.batch_length, self.position_embed_size])
     self.character_embedding = self.weight_variable([self.words_size, self.character_embed_size])
-    self.conv_kernel = self.weight_variable([self.window_size, self.concat_embed_size, 1, self.filter_size])
-    self.bias = self.weight_variable([self.filter_size])
+    self.conv_kernel = self.get_conv_kernel()
+    self.bias = [self.weight_variable([self.filter_size])] * len(self.window_size)
     self.full_connected_weight = self.weight_variable([self.filter_size, self.relation_count])
     self.full_connected_bias = self.weight_variable([self.relation_count])
     self.position_lookup = tf.nn.embedding_lookup(self.position_embedding, self.input_position)
@@ -44,12 +51,11 @@ class RECNN():
                                                  [None, self.batch_length, self.position_embed_size])
     self.emebd_concat = tf.expand_dims(
       tf.concat([self.character_embed_holder, self.primary_embed_holder, self.secondary_embed_holder], 2), 3)
-    self.hidden_layer = tf.layers.dropout(tf.squeeze(self.max_pooling(tf.nn.relu(self.conv() + self.bias))),
-                                          self.dropout_rate)
+    self.hidden_layer = tf.layers.dropout(tf.squeeze(self.get_hidden()), self.dropout_rate)
     self.output_no_softmax = tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias
     self.output = tf.nn.softmax(tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias)
-    self.params = [self.position_embedding, self.character_embedding, self.conv_kernel, self.bias,
-                   self.full_connected_weight, self.full_connected_bias]
+    self.params = [self.position_embedding, self.character_embedding, self.full_connected_weight,
+                   self.full_connected_bias] + self.conv_kernel + self.bias
     self.regularization = tf.contrib.layers.apply_regularization(tf.contrib.layers.l2_regularizer(self.lam),
                                                                  self.params)
     self.loss = tf.reduce_sum(tf.square(self.output - self.input_relation)) / self.batch_size + self.regularization
@@ -65,11 +71,32 @@ class RECNN():
     initial = tf.truncated_normal(shape, stddev=0.1, dtype=self.dtype)
     return tf.Variable(initial)
 
-  def conv(self):
-    return tf.nn.conv2d(self.input, self.conv_kernel, strides=[1, 1, 1, 1], padding='VALID')
+  def get_conv_kernel(self):
+    conv_kernel = []
+    for w in self.window_size:
+      conv_kernel.append(self.weight_variable([w, self.concat_embed_size, 1, self.filter_size]))
+    return conv_kernel
 
-  def max_pooling(self, x):
-    return tf.nn.max_pool(x, ksize=[1, self.batch_length - self.window_size + 1, 1, 1],
+  def get_max_pooling(self, x):
+    max_pooling = []
+    for w in self.window_size:
+      max_pooling.append(self.max_pooling(x, w))
+    return max_pooling
+
+  def get_hidden(self):
+    h = None
+    for w, conv, bias in zip(self.window_size, self.conv_kernel, self.bias):
+      if not h:
+        h = self.max_pooling(tf.nn.relu(self.conv(conv) + bias), w)
+      else:
+        h = tf.concat([h, self.max_pooling(tf.nn.relu(self.conv(conv) + bias), w)], 1)
+    return h
+
+  def conv(self, conv_kernel):
+    return tf.nn.conv2d(self.input, conv_kernel, strides=[1, 1, 1, 1], padding='VALID')
+
+  def max_pooling(self, x, window_size):
+    return tf.nn.max_pool(x, ksize=[1, self.batch_length - window_size + 1, 1, 1],
                           strides=[1, 1, 1, 1], padding='VALID')
 
   def train(self):
@@ -78,7 +105,7 @@ class RECNN():
       tf.global_variables_initializer().run()
       sess.graph.finalize()
       epoches = 100
-      for i in range(epoches):
+      for i in range(1,epoches+1):
         print('epoch:' + str(i))
         for batch in batches:
           character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],
@@ -90,7 +117,8 @@ class RECNN():
                                                          self.secondary_embed_holder: secondary_embeds})
           # sess.run(self.train_model, feed_dict={self.input: input, self.input_relation: batch['label']})
           sess.run(self.train_cross_entropy_model, feed_dict={self.input: input, self.input_relation: batch['label']})
-        self.saver.save(sess, self.output_folder + 'cnn_emr_model%d.ckpt' % i)
+        if i%20 == 0:
+          self.saver.save(sess, self.output_folder + 'cnn_emr_model{0}_{1}.ckpt'.format(i, '_'.join(map(str, self.window_size))))
 
   def load_batches(self, path):
     with open(path, 'rb') as f:
@@ -152,5 +180,15 @@ class RECNN():
 
 
 if __name__ == '__main__':
-  reCNN = RECNN()
-  reCNN.train()
+  re_2 = RECNN(window_size=(2,))
+  re_2.train()
+  re_3 = RECNN(window_size=(3,))
+  re_2.train()
+  re_4 = RECNN(window_size=(4,))
+  re_2.train()
+  re_2_3 = RECNN(window_size=(2,3))
+  re_2.train()
+  re_3_4 = RECNN(window_size=(3, 4))
+  re_2.train()
+  re_2_3_4 = re_2_3 = RECNN(window_size=(2,3,4))
+  re_2.train()

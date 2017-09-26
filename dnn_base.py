@@ -7,9 +7,9 @@ from collections import OrderedDict
 class DNNBase(Base):
   def __init__(self):
     Base.__init__(self)
-    self.tags_count = 4
+    self.tags_count = 3
     self.dictionary = None
-    self.skip_window_left = 1
+    self.skip_window_left = 0
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
     self.hinge_discount = 0.2
