@@ -27,7 +27,7 @@ class RECNN():
       self.test_batch_path = 'corpus/emr_test_all_relations.rel'
     elif relation_count == 29:
       self.batch_path = 'corpus/emr_relation_batches.rel'
-      self.output_folder = 'tmp/re_mutli/'
+      self.output_folder = 'tmp/re_multi/'
       self.test_batch_path = 'corpus/emr_test_relations.rel'
     else:
       raise Exception('relation count error')
@@ -41,7 +41,7 @@ class RECNN():
     self.character_embedding = self.weight_variable([self.words_size, self.character_embed_size])
     self.conv_kernel = self.get_conv_kernel()
     self.bias = [self.weight_variable([self.filter_size])] * len(self.window_size)
-    self.full_connected_weight = self.weight_variable([self.filter_size, self.relation_count])
+    self.full_connected_weight = self.weight_variable([self.filter_size*len(self.window_size), self.relation_count])
     self.full_connected_bias = self.weight_variable([self.relation_count])
     self.position_lookup = tf.nn.embedding_lookup(self.position_embedding, self.input_position)
     self.character_lookup = tf.nn.embedding_lookup(self.character_embedding, self.input_characters)
@@ -53,7 +53,7 @@ class RECNN():
                                                  [None, self.batch_length, self.position_embed_size])
     self.emebd_concat = tf.expand_dims(
       tf.concat([self.character_embed_holder, self.primary_embed_holder, self.secondary_embed_holder], 2), 3)
-    self.hidden_layer = tf.layers.dropout(tf.squeeze(self.get_hidden()), self.dropout_rate)
+    self.hidden_layer = tf.layers.dropout(self.get_hidden(), self.dropout_rate)
     self.output_no_softmax = tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias
     self.output = tf.nn.softmax(tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias)
     self.params = [self.position_embedding, self.character_embedding, self.full_connected_weight,
@@ -88,10 +88,11 @@ class RECNN():
   def get_hidden(self):
     h = None
     for w, conv, bias in zip(self.window_size, self.conv_kernel, self.bias):
-      if not h:
-        h = self.max_pooling(tf.nn.relu(self.conv(conv) + bias), w)
+      if h is None:
+        h = tf.squeeze(self.max_pooling(tf.nn.relu(self.conv(conv) + bias), w))
       else:
-        h = tf.concat([h, self.max_pooling(tf.nn.relu(self.conv(conv) + bias), w)], 1)
+        hh = tf.squeeze(self.max_pooling(tf.nn.relu(self.conv(conv) + bias), w))
+        h = tf.concat([h, hh], 1)
     return h
 
   def conv(self, conv_kernel):
@@ -182,12 +183,12 @@ class RECNN():
     print('recall:', recall)
 
 def train_two():
-  re_2 = RECNN(window_size=(2,))
-  re_2.train()
-  re_3 = RECNN(window_size=(3,))
-  re_3.train()
-  re_4 = RECNN(window_size=(4,))
-  re_4.train()
+  # re_2 = RECNN(window_size=(2,))
+  # re_2.train()
+  # re_3 = RECNN(window_size=(3,))
+  # re_3.train()
+  # re_4 = RECNN(window_size=(4,))
+  # re_4.train()
   re_2_3 = RECNN(window_size=(2, 3))
   re_2_3.train()
   re_3_4 = RECNN(window_size=(3, 4))

@@ -50,24 +50,24 @@ def evaluate_ner(model_name):
 
 def evaluate_re():
   re_two = RECNN(2)
-  re_multi = RECNN(29)
-  window_size = [[2], [3], [4], [2, 3], [3, 4], [2, 3, 4]]
+  # re_multi = RECNN(29)
+  window_size = [ [3], [4], [2, 3], [3, 4], [2, 3, 4]]
   for w in window_size:
     print('window size:', w)
     name = 'cnn_emr_model100_{0}.ckpt'.format('_'.join(map(str, w)))
     re_two.evaluate(name)
-    re_multi.evaluate(name)
+    # re_multi.evaluate(name)
 
 
 if __name__ == '__main__':
   # 实体识别
-  print('mlp')
-  evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
-  print('mlp+embed')
-  evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
-  print('lstm')
-  evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
-  print('lstm+embed')
-  evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
+  # print('mlp')
+  # evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
+  # print('mlp+embed')
+  # evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
+  # print('lstm')
+  # evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
+  # print('lstm+embed')
+  # evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
   # 关系抽取
   evaluate_re()
