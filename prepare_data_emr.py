@@ -78,12 +78,14 @@ class PrepareDataNer():
                                                                                 is_negative_relation=False,
                                                                                 is_relation_category=True)
 
-    self.test_characters, self.test_entity_labels, self.test_relations, self.test_all_relations = self.build_dataset(
+    self.test_characters, self.test_entity_labels, _, self.test_all_relations = self.build_dataset(
       self.test_filenames,
       self.test_annotations,
-      is_entity_category=False,
-      is_negative_relation=True,
-      is_relation_category=True)
+      is_entity_category=False)
+    _, _, self.test_relations, _ = self.build_dataset(self.test_filenames, self.test_annotations,
+                                                                                is_entity_category=False,
+                                                                                is_negative_relation=False,
+                                                                                is_relation_category=True)
     # self.plot_words_sentences()
     np.save('corpus/emr_ner_training_characters', self.characters)
     np.save('corpus/emr_ner_training_labels', self.entity_labels)
@@ -101,13 +103,16 @@ class PrepareDataNer():
     np.save('corpus/emr_ner_training_label_batches', self.label_batches)
     self.train_relation_batches = self.build_relation_batch(self.relations, self.relation_batch_size)
     self.all_relation_batches = self.build_relation_batch(self.all_relations, self.relation_batch_size)
-    self.test_relation_batches = self.build_relation_batch(self.test_all_relations, 1)
+    self.test_all_relation_batches = self.build_relation_batch(self.test_all_relations, 1)
+    self.test_relation_batches = self.build_relation_batch(self.test_relations, 1)
     with open('corpus/emr_relation_batches.rel', 'wb') as f:
       pickle.dump(self.train_relation_batches, f)
     with open('corpus/emr_all_relation_batches.rel', 'wb') as f:
       pickle.dump(self.all_relation_batches, f)
-    with open('corpus/emr_test_all_relations.rel', 'wb') as f:
+    with open('corpus/emr_test_relations.rel', 'wb') as f:
       pickle.dump(self.test_relation_batches, f)
+    with open('corpus/emr_test_all_relations.rel', 'wb') as f:
+      pickle.dump(self.test_all_relation_batches, f)
 
   def read_annotation(self, base_folder, filenames):
     annotation = {}

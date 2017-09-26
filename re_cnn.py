@@ -24,12 +24,14 @@ class RECNN():
     if relation_count == 2:
       self.batch_path = 'corpus/emr_all_relation_batches.rel'
       self.output_folder = 'tmp/re_two/'
+      self.test_batch_path = 'corpus/emr_test_all_relations.rel'
     elif relation_count == 29:
       self.batch_path = 'corpus/emr_relation_batches.rel'
       self.output_folder = 'tmp/re_mutli/'
+      self.test_batch_path = 'corpus/emr_test_relations.rel'
     else:
       raise Exception('relation count error')
-    self.test_batch_path = 'corpus/emr_test_relations.rel'
+
     self.concat_embed_size = self.character_embed_size + 2 * self.position_embed_size
     self.input_characters = tf.placeholder(tf.int32, [None, self.batch_length])
     self.input_position = tf.placeholder(tf.int32, [None, self.batch_length])
@@ -105,7 +107,7 @@ class RECNN():
       tf.global_variables_initializer().run()
       sess.graph.finalize()
       epoches = 100
-      for i in range(1,epoches+1):
+      for i in range(1, epoches + 1):
         print('epoch:' + str(i))
         for batch in batches:
           character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],
@@ -117,8 +119,9 @@ class RECNN():
                                                          self.secondary_embed_holder: secondary_embeds})
           # sess.run(self.train_model, feed_dict={self.input: input, self.input_relation: batch['label']})
           sess.run(self.train_cross_entropy_model, feed_dict={self.input: input, self.input_relation: batch['label']})
-        if i%20 == 0:
-          self.saver.save(sess, self.output_folder + 'cnn_emr_model{0}_{1}.ckpt'.format(i, '_'.join(map(str, self.window_size))))
+        if i % 20 == 0:
+          model_name = 'cnn_emr_model{0}_{1}.ckpt'.format(i, '_'.join(map(str, self.window_size)))
+          self.saver.save(sess, self.output_folder + model_name)
 
   def load_batches(self, path):
     with open(path, 'rb') as f:
@@ -178,17 +181,34 @@ class RECNN():
     print('precision:', prec)
     print('recall:', recall)
 
-
-if __name__ == '__main__':
+def train_two():
   re_2 = RECNN(window_size=(2,))
   re_2.train()
   re_3 = RECNN(window_size=(3,))
-  re_2.train()
+  re_3.train()
   re_4 = RECNN(window_size=(4,))
-  re_2.train()
-  re_2_3 = RECNN(window_size=(2,3))
-  re_2.train()
+  re_4.train()
+  re_2_3 = RECNN(window_size=(2, 3))
+  re_2_3.train()
   re_3_4 = RECNN(window_size=(3, 4))
+  re_3_4.train()
+  re_2_3_4 = RECNN(window_size=(2, 3, 4))
+  re_2_3_4.train()
+
+def train_multi():
+  re_2 = RECNN(window_size=(2,),relation_count=29)
   re_2.train()
-  re_2_3_4 = re_2_3 = RECNN(window_size=(2,3,4))
-  re_2.train()
+  re_3 = RECNN(window_size=(3,),relation_count=29)
+  re_3.train()
+  re_4 = RECNN(window_size=(4,),relation_count=29)
+  re_4.train()
+  re_2_3 = RECNN(window_size=(2, 3),relation_count=29)
+  re_2_3.train()
+  re_3_4 = RECNN(window_size=(3, 4),relation_count=29)
+  re_3_4.train()
+  re_2_3_4 = RECNN(window_size=(2, 3, 4),relation_count=29)
+  re_2_3_4.train()
+
+if __name__ == '__main__':
+  train_two()
+  train_multi()

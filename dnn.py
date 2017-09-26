@@ -9,7 +9,7 @@ from config import TrainMode
 
 
 class DNN(DNNBase):
-  def __init__(self, type='mlp', batch_size=10, batch_length=224, mode=TrainMode.Batch,task='cws', is_seg=False):
+  def __init__(self, type='mlp', batch_size=10, batch_length=224, mode=TrainMode.Batch,task='cws', is_seg=False, is_embed=False):
     tf.reset_default_graph()
     DNNBase.__init__(self)
     # 参数初始化
@@ -26,6 +26,7 @@ class DNN(DNNBase):
       self.tags = [0, 1, 2]
     else:
       raise Exception('task name error')
+    self.is_embed = is_embed
     self.tags_count = len(self.tags)
     self.concat_embed_size = self.window_size * self.embed_size
     self.learning_rate = 0.01
@@ -49,8 +50,11 @@ class DNN(DNNBase):
     #  tf.truncated_normal([self.vocab_size, self.embed_size], stddev=1.0 / math.sqrt(self.embed_size),
     #                      dtype=self.dtype), name='embeddings')
     initializer = tf.contrib.layers.xavier_initializer(dtype=self.dtype)
-    self.embeddings = tf.get_variable('embeddings', [self.vocab_size, self.embed_size], dtype=self.dtype,
+    if not self.is_embed:
+      self.embeddings = tf.get_variable('embeddings', [self.vocab_size, self.embed_size], dtype=self.dtype,
                                       initializer=initializer)
+    else:
+      self.embeddings = tf.Variable(np.load('corpus/embed/embeddings.npy'),dtype=self.dtype,name='embeddings')
     self.input = tf.placeholder(tf.int32, shape=[None, self.window_size])
     self.label_index_correct = tf.placeholder(tf.int32, shape=[None, 2])
     self.label_index_current = tf.placeholder(tf.int32, shape=[None, 2])
@@ -161,10 +165,17 @@ class DNN(DNNBase):
             print(sentence_index)
             print(time.time() - last_time)
             last_time = time.time()
-        if self.type == 'mlp':
-          self.saver.save(self.sess, 'tmp/mlp/mlp-ner-model{0}.ckpt'.format(i+1))
-        elif self.type == 'lstm':
-          self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model{0}.ckpt'.format(i+1))
+        if (i + 1) % 10 == 0:
+          if self.type == 'mlp':
+            if self.is_embed:
+              self.saver.save(self.sess, 'tmp/mlp/mlp-ner-embed-model{0}.ckpt'.format(i+1))
+            else:
+              self.saver.save(self.sess, 'tmp/mlp/mlp-ner-model{0}.ckpt'.format(i + 1))
+          elif self.type == 'lstm':
+            if self.is_embed:
+              self.saver.save(self.sess, 'tmp/lstm/lstm-ner-embed-model{0}.ckpt'.format(i + 1))
+            else:
+              self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model{0}.ckpt'.format(i+1))
     elif self.mode == TrainMode.Batch:
       for i in range(epoches):
         self.step = i
@@ -176,7 +187,11 @@ class DNN(DNNBase):
             print(batch_index)
             print(time.time() - last_time)
             last_time = time.time()
-        self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model{0}.ckpt'.format(i+1))
+        if (i+1)%10 == 0:
+          if self.is_embed:
+            self.saver.save(self.sess, 'tmp/lstm/lstm-ner-embed-model{0}.ckpt'.format(i+1))
+          else:
+            self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model{0}.ckpt'.format(i + 1))
 
   def train_sentence(self, sentence, labels):
     scores = self.sess.run(self.word_scores, feed_dict={self.input: sentence})
@@ -284,7 +299,11 @@ class DNN(DNNBase):
 
 
 if __name__ == '__main__':
-  dnn = DNN('mlp', mode=TrainMode.Sentence, task='ner')
-  dnn.train_exe()
-  dnn = DNN('lstm', task='ner')
-  dnn.train_exe()
+  mlp = DNN('mlp', mode=TrainMode.Sentence, task='ner')
+  mlp.train_exe()
+  mlp_embed = DNN('mlp', mode=TrainMode.Sentence, task='ner', is_embed=True)
+  mlp_embed.train_exe()
+  lstm = DNN('lstm', task='ner')
+  lstm.train_exe()
+  lstm_embed = DNN('lstm', task='ner',is_embed=True)
+  lstm_embed.train_exe()

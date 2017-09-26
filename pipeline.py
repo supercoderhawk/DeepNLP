@@ -39,7 +39,7 @@ def evaluate_ner(model_name):
     corr_count += c_count
     prec_count += p_count
     recall_count += r_count
-  print(corr_count, prec_count,recall_count)
+  print(corr_count, prec_count, recall_count)
   prec = corr_count / prec_count
   recall = corr_count / recall_count
   f1 = 2 * prec * recall / (prec + recall)
@@ -51,11 +51,23 @@ def evaluate_ner(model_name):
 def evaluate_re():
   re_two = RECNN(2)
   re_multi = RECNN(29)
-  re_two.evaluate('tmp/re_two/cnn_emr_model100.ckpt')
-  re_multi.evaluate('tmp/re_multi/cnn_emr_model100.ckpt')
+  window_size = [[2], [3], [4], [2, 3], [3, 4], [2, 3, 4]]
+  for w in window_size:
+    print('window size:', w)
+    name = 'cnn_emr_model100_{0}.ckpt'.format('_'.join(map(str, w)))
+    re_two.evaluate(name)
+    re_multi.evaluate(name)
 
 
 if __name__ == '__main__':
+  # 实体识别
+  print('mlp')
   evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
+  print('mlp+embed')
+  evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
+  print('lstm')
   evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
+  print('lstm+embed')
+  evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
+  # 关系抽取
   evaluate_re()
