@@ -16,7 +16,7 @@ def get_ner(content, model_name):
   if model_name.startswith('tmp/mlp'):
     dnn = DNN('mlp', mode=TrainMode.Sentence, task='ner', is_seg=True)
   else:
-    dnn = DNN('lstm', mode=TrainMode.Batch, task='ner', is_seg=True)
+    dnn = DNN('lstm', task='ner', is_seg=True)
   ner = dnn.seg(content, model_path=model_name, ner=True, trans=True)
   return ner[1]
 
@@ -43,17 +43,19 @@ def evaluate_ner(model_name):
   prec = corr_count / prec_count
   recall = corr_count / recall_count
   f1 = 2 * prec * recall / (prec + recall)
+  with open('corpus/ner.txt', 'a', encoding='utf8') as f:
+    f.write(model_name + '\t{:.2f}\t{:.2f}\t{:.2f}\n'.format(prec * 100, recall * 100, f1 * 100))
   print('precision:', prec)
   print('recall:', recall)
   print('F1 score:', f1)
 
 
 def evaluate_re():
-  re_two = RECNN(2)
-  # re_multi = RECNN(29)
-  window_size = [ [3], [4], [2, 3], [3, 4], [2, 3, 4]]
+  window_size = [(2,), (3,), (4,), (2, 3), (3, 4), (2, 3, 4)]
   for w in window_size:
     print('window size:', w)
+    re_two = RECNN(2, window_size=w, train=False)
+    # re_multi = RECNN(29, window_size=w, train=False)
     name = 'cnn_emr_model100_{0}.ckpt'.format('_'.join(map(str, w)))
     re_two.evaluate(name)
     # re_multi.evaluate(name)
@@ -62,12 +64,14 @@ def evaluate_re():
 if __name__ == '__main__':
   # 实体识别
   # print('mlp')
-  # evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
+  # evaluate_ner('tmp/mlp/mlp-ner-model20.ckpt')
   # print('mlp+embed')
-  # evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
+  # evaluate_ner('tmp/mlp/mlp-ner-embed-model50.ckpt')
   # print('lstm')
   # evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
   # print('lstm+embed')
-  # evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
+  # evaluate_ner('tmp/lstm/lstm-ner-embed-model50.ckpt')
   # 关系抽取
   evaluate_re()
+  # re_two = RECNN(2, window_size=(4,), train=False)
+  # re_two.evaluate('cnn_emr_model60_4.ckpt')

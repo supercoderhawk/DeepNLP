@@ -5,7 +5,7 @@ import pickle
 
 
 class RECNN():
-  def __init__(self, relation_count=2, window_size=(3,), batch_size=50, batch_length=85):
+  def __init__(self, relation_count=2, window_size=(3,), batch_size=50, batch_length=85,train=True):
     tf.reset_default_graph()
     self.dtype = tf.float32
     self.window_size = window_size
@@ -15,12 +15,13 @@ class RECNN():
     self.batch_size = batch_size
     self.learning_rate = 0.01
     self.dropout_rate = 0.5
-    self.lam = 0.0005
+    self.lam = 0.0001
     self.character_embed_size = 300
     self.position_embed_size = 50
     self.dict_path = 'corpus/emr_words_dict.utf8'
     self.dictionary = self.read_dictionary()
     self.words_size = len(self.dictionary)
+    self.is_train = train
     if relation_count == 2:
       self.batch_path = 'corpus/emr_all_relation_batches.rel'
       self.output_folder = 'tmp/re_two/'
@@ -53,7 +54,10 @@ class RECNN():
                                                  [None, self.batch_length, self.position_embed_size])
     self.emebd_concat = tf.expand_dims(
       tf.concat([self.character_embed_holder, self.primary_embed_holder, self.secondary_embed_holder], 2), 3)
-    self.hidden_layer = tf.layers.dropout(self.get_hidden(), self.dropout_rate)
+    if train:
+      self.hidden_layer = tf.layers.dropout(self.get_hidden(), self.dropout_rate)
+    else:
+      self.hidden_layer = tf.expand_dims(tf.layers.dropout(self.get_hidden(), self.dropout_rate),0)
     self.output_no_softmax = tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias
     self.output = tf.nn.softmax(tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias)
     self.params = [self.position_embedding, self.character_embedding, self.full_connected_weight,
@@ -92,7 +96,10 @@ class RECNN():
         h = tf.squeeze(self.max_pooling(tf.nn.relu(self.conv(conv) + bias), w))
       else:
         hh = tf.squeeze(self.max_pooling(tf.nn.relu(self.conv(conv) + bias), w))
-        h = tf.concat([h, hh], 1)
+        if self.is_train:
+          h = tf.concat([h, hh], 1)
+        else:
+          h = tf.concat([h,hh], 0)
     return h
 
   def conv(self, conv_kernel):
@@ -120,7 +127,7 @@ class RECNN():
                                                          self.secondary_embed_holder: secondary_embeds})
           # sess.run(self.train_model, feed_dict={self.input: input, self.input_relation: batch['label']})
           sess.run(self.train_cross_entropy_model, feed_dict={self.input: input, self.input_relation: batch['label']})
-        if i % 20 == 0:
+        if i % 50 == 0:
           model_name = 'cnn_emr_model{0}_{1}.ckpt'.format(i, '_'.join(map(str, self.window_size)))
           self.saver.save(sess, self.output_folder + model_name)
 
@@ -153,8 +160,11 @@ class RECNN():
       return np.argmax(output, 1)
 
   def evaluate(self, model_file):
+    #tf.reset_default_graph()
     with tf.Session() as sess:
-      self.saver.restore(sess, self.output_folder + model_file)
+      #tf.global_variables_initializer().run()
+
+      self.saver.restore(sess=sess, save_path=self.output_folder + model_file)
       items = self.load_batches(self.test_batch_path)
       corr_count = [0] * self.relation_count
       prec_count = [0] * self.relation_count
@@ -168,27 +178,36 @@ class RECNN():
         input = sess.run(self.emebd_concat, feed_dict={self.character_embed_holder: character_embeds,
                                                        self.primary_embed_holder: primary_embeds,
                                                        self.secondary_embed_holder: secondary_embeds})
+        # print(input)
         output = np.squeeze(sess.run(self.output, feed_dict={self.input: input}))
-        target = np.nonzero(item['label'])[0][0]
+        target = np.argmax(item['label'])
         current = np.argmax(output)
-        print(target, current)
         if target == current:
           corr_count[target] += 1
         prec_count[current] += 1
         recall_count[target] += 1
 
-    prec = sum([c / p for c, p in zip(corr_count, prec_count)]) / self.relation_count
-    recall = sum([c / r for c, r in zip(corr_count, recall_count)]) / self.relation_count
+    precs = [c / p for c, p in zip(corr_count, prec_count) if p != 0 and c != 0]
+    recalls = [c / r for c, r in zip(corr_count, recall_count) if r!= 0 and c != 0]
+    print(corr_count)
+    print(recall_count)
+    print(corr_count)
+    print(precs)
+    print(recalls)
+    prec = sum(precs) / len(precs)
+    recall = sum(recalls) / len(recalls)
+    f1 = 2*prec*recall/(prec+recall)
     print('precision:', prec)
     print('recall:', recall)
+    print('f1',f1)
 
 def train_two():
-  # re_2 = RECNN(window_size=(2,))
-  # re_2.train()
-  # re_3 = RECNN(window_size=(3,))
-  # re_3.train()
-  # re_4 = RECNN(window_size=(4,))
-  # re_4.train()
+  re_2 = RECNN(window_size=(2,))
+  re_2.train()
+  re_3 = RECNN(window_size=(3,))
+  re_3.train()
+  re_4 = RECNN(window_size=(4,))
+  re_4.train()
   re_2_3 = RECNN(window_size=(2, 3))
   re_2_3.train()
   re_3_4 = RECNN(window_size=(3, 4))
