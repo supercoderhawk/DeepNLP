@@ -46,13 +46,14 @@ class DNN(DNNBase):
     self.vocab_size = len(self.dictionary)
     # 模型定义和初始化
     self.sess = tf.Session()
-    # self.embeddings = tf.Variable(
-    #  tf.truncated_normal([self.vocab_size, self.embed_size], stddev=1.0 / math.sqrt(self.embed_size),
-    #                      dtype=self.dtype), name='embeddings')
+
     initializer = tf.contrib.layers.xavier_initializer(dtype=self.dtype)
     if not self.is_embed:
-      self.embeddings = tf.get_variable('embeddings', [self.vocab_size, self.embed_size], dtype=self.dtype,
-                                      initializer=initializer)
+      self.embeddings = tf.Variable(
+        tf.truncated_normal([self.vocab_size, self.embed_size], stddev=1.0 / math.sqrt(self.embed_size),
+                            dtype=self.dtype), name='embeddings')
+      #self.embeddings = tf.get_variable('embeddings', [self.vocab_size, self.embed_size], dtype=self.dtype,
+     #                                 initializer=initializer)
     else:
       self.embeddings = tf.Variable(np.load('corpus/embed/embeddings.npy'),dtype=self.dtype,name='embeddings')
     self.input = tf.placeholder(tf.int32, shape=[None, self.window_size])
@@ -269,6 +270,7 @@ class DNN(DNNBase):
         self.sess.run(self.train_with_init, feed_dict)
 
   def seg(self, sentence, model_path='tmp/mlp-model0.ckpt', debug=False, ner=False, trans=False):
+    tf.global_variables_initializer().run(session=self.sess)
     self.saver.restore(self.sess, model_path)
     if not trans:
       s = self.sentence2index(sentence)
@@ -294,7 +296,8 @@ class DNN(DNNBase):
     if not ner:
       return self.tags2words(sentence, current_labels), current_labels
     else:
-      return self.tags2entities(sentence, current_labels), current_labels
+      # return self.tags2entities(sentence, current_labels), current_labels
+      return None, current_labels
     # return self.tags2category_entities(sentence, current_labels), current_labels
 
 

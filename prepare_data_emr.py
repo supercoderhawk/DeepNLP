@@ -71,7 +71,7 @@ class PrepareDataNer():
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
     self.words_dictionary = self.build_words_dictionary()
     # 二分类
-    _, _, _, self.all_relations = self.build_dataset(self.filenames, self.annotations, is_entity_category=False)
+    _, _, self.all_relations, _ = self.build_dataset(self.filenames, self.annotations, is_entity_category=False)
     # 多分类
     self.characters, self.entity_labels, self.relations, _ = self.build_dataset(self.filenames, self.annotations,
                                                                                 is_entity_category=False,
@@ -83,9 +83,9 @@ class PrepareDataNer():
       self.test_annotations,
       is_entity_category=False)
     _, _, self.test_relations, _ = self.build_dataset(self.test_filenames, self.test_annotations,
-                                                                                is_entity_category=False,
-                                                                                is_negative_relation=False,
-                                                                                is_relation_category=True)
+                                                      is_entity_category=False,
+                                                      is_negative_relation=False,
+                                                      is_relation_category=True)
     # self.plot_words_sentences()
     np.save('corpus/emr_ner_training_characters', self.characters)
     np.save('corpus/emr_ner_training_labels', self.entity_labels)
@@ -215,8 +215,7 @@ class PrepareDataNer():
     word_seg_in_sentence = [self.words_dictionary[',']]
     characters_index = []
     entity_labels = []
-    train_relations = []
-    all_relations = []
+    all_relations = {}
     relations = {}
     pos = 0
     neg = 0
@@ -319,6 +318,7 @@ class PrepareDataNer():
         entity_dict = {}  # 每个句子中所有实体字典，键为实体id，值为实体在句子中的索引
         positive_relations = []  # 训练用关系的'hash'，primary_id < secondary_id
         current_relations = []  # 已添加的关系`hash`，防止无序关系添加两次
+        current_all_relations = []
         sentence_word_index = []  # 句子中每个词在词典中的索引
         all_positive_relations = []  # 未处理的关系的hash
 
@@ -350,23 +350,26 @@ class PrepareDataNer():
                              'primary': arr - primary, 'secondary': arr - secondary,
                              'label': relation_label}
             # train_relations.append(relation_item)
-            if relations.get(sentence_id) == None:
+            if relations.get(sentence_id) is None:
               relations[sentence_id] = [relation_item]
             else:
               relations[sentence_id].append(relation_item)
-
-            all_relations.append(relation_item)
+            if all_relations.get(sentence_id) is None:
+              all_relations[sentence_id] = [relation_item]
+            else:
+              all_relations[sentence_id].append(relation_item)
 
         pos += len(positive_relations)
         entities = list(entity_dict.keys())
         # 添加非关系，可认为是负采样
-        distance = 5
+        distance = 8
         if is_negative_relation:
           for entity_i, entity in enumerate(entities):
             secondaries = []
+            all_secondaries = []
             for s in entities[:entity_i] + entities[entity_i + 1:]:
               secondary_constraint = self.relation_constraint.get(all_entities[entity]['category'])
-              if secondary_constraint == None or all_entities[s]['category'] not in secondary_constraint:
+              if secondary_constraint is None or all_entities[s]['category'] not in secondary_constraint:
                 continue
 
               if entity < s:
@@ -386,9 +389,11 @@ class PrepareDataNer():
                 if abs(entity_dict[first] - entity_dict[second]) < distance:
                   secondaries.append(s)
                   current_relations.append(rel_hash)
-
-            all_secondaries = [s for s in entities[:entity_i] + entities[entity_i + 1:]
-                               if entity + ':' + s not in all_positive_relations]
+              if rel_hash not in positive_relations and rel_hash not in current_all_relations:
+                all_secondaries.append(s)
+                current_all_relations.append(rel_hash)
+            # all_secondaries = [s for s in entities[:entity_i] + entities[entity_i + 1:]
+            #                    if entity + ':' + s not in all_positive_relations]
             primary_start = entity_dict[entity]
             neg += len(secondaries)
             all_neg += len(all_secondaries)
@@ -403,7 +408,7 @@ class PrepareDataNer():
                                'primary': arr - primary_start, 'secondary': arr - entity_dict[s],
                                'label': relation_label}
               # train_relations.append(relation_item)
-              if relations.get(sentence_id) == None:
+              if relations.get(sentence_id) is None:
                 relations[sentence_id] = [relation_item]
               else:
                 relations[sentence_id].append(relation_item)
@@ -416,11 +421,15 @@ class PrepareDataNer():
               relation_item = {'sentence': np.array(word_index[cur_word_index:latter_word_index], dtype=np.int32),
                                'primary': arr - primary_start, 'secondary': arr - entity_dict[s],
                                'label': relation_label}
-              all_relations.append(relation_item)
+              if all_relations.get(sentence_id) is None:
+                all_relations[sentence_id] = [relation_item]
+              else:
+                all_relations[sentence_id].append(relation_item)
 
     print(neg / (pos + neg))
     print(all_neg / (pos + all_neg))
     train_relations = [r for rs in relations.values() for r in rs]
+    all_relations = [r for rs in all_relations.values() for r in rs]
     for i, chs in enumerate(characters_index):
       sentence = ''
       for ch in chs:
