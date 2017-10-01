@@ -114,8 +114,8 @@ class RECNN():
     with tf.Session() as sess:
       tf.global_variables_initializer().run()
       sess.graph.finalize()
-      epoches = 100
-      for i in range(1, epoches + 1):
+      epochs = 100
+      for i in range(1, epochs + 1):
         print('epoch:' + str(i))
         for batch in batches:
           character_embeds, primary_embeds = sess.run([self.character_lookup, self.position_lookup],

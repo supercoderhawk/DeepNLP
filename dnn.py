@@ -153,10 +153,10 @@ class DNN(DNNBase):
   def train_exe(self):
     tf.global_variables_initializer().run(session=self.sess)
     self.sess.graph.finalize()
-    epoches = 50
+    epochs = 50
     last_time = time.time()
     if self.mode == TrainMode.Sentence:
-      for i in range(epoches):
+      for i in range(epochs):
         print('epoch:%d' % i)
         for sentence_index, (sentence, labels,length) in enumerate(zip(self.character_batches, self.label_batches,self.lengths)):
           # self.train_sentence(sentence[:length], labels[:length])
@@ -178,7 +178,7 @@ class DNN(DNNBase):
             else:
               self.saver.save(self.sess, 'tmp/lstm/lstm-ner-model{0}.ckpt'.format(i+1))
     elif self.mode == TrainMode.Batch:
-      for i in range(epoches):
+      for i in range(epochs):
         self.step = i
         print('epoch:%d' % i)
         for batch_index, (character_batch, label_batch, lengths) in enumerate(
