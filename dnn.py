@@ -14,7 +14,7 @@ class DNN(DNNBase):
     DNNBase.__init__(self)
     # 参数初始化
     self.dtype = tf.float32
-    self.skip_window_left = 0
+    self.skip_window_left = 1
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
     # self.vocab_size = 4000
@@ -153,7 +153,7 @@ class DNN(DNNBase):
   def train_exe(self):
     tf.global_variables_initializer().run(session=self.sess)
     self.sess.graph.finalize()
-    epoches = 50
+    epoches = 100
     last_time = time.time()
     if self.mode == TrainMode.Sentence:
       for i in range(epoches):

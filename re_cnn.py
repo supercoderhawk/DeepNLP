@@ -5,7 +5,7 @@ import pickle
 
 
 class RECNN():
-  def __init__(self, relation_count=2, window_size=(3,), batch_size=50, batch_length=85,train=True):
+  def __init__(self, relation_count=2, window_size=(3,), batch_size=50, batch_length=85, train=True):
     tf.reset_default_graph()
     self.dtype = tf.float32
     self.window_size = window_size
@@ -42,7 +42,7 @@ class RECNN():
     self.character_embedding = self.weight_variable([self.words_size, self.character_embed_size])
     self.conv_kernel = self.get_conv_kernel()
     self.bias = [self.weight_variable([self.filter_size])] * len(self.window_size)
-    self.full_connected_weight = self.weight_variable([self.filter_size*len(self.window_size), self.relation_count])
+    self.full_connected_weight = self.weight_variable([self.filter_size * len(self.window_size), self.relation_count])
     self.full_connected_bias = self.weight_variable([self.relation_count])
     self.position_lookup = tf.nn.embedding_lookup(self.position_embedding, self.input_position)
     self.character_lookup = tf.nn.embedding_lookup(self.character_embedding, self.input_characters)
@@ -57,7 +57,7 @@ class RECNN():
     if train:
       self.hidden_layer = tf.layers.dropout(self.get_hidden(), self.dropout_rate)
     else:
-      self.hidden_layer = tf.expand_dims(tf.layers.dropout(self.get_hidden(), self.dropout_rate),0)
+      self.hidden_layer = tf.expand_dims(tf.layers.dropout(self.get_hidden(), self.dropout_rate), 0)
     self.output_no_softmax = tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias
     self.output = tf.nn.softmax(tf.matmul(self.hidden_layer, self.full_connected_weight) + self.full_connected_bias)
     self.params = [self.position_embedding, self.character_embedding, self.full_connected_weight,
@@ -99,7 +99,7 @@ class RECNN():
         if self.is_train:
           h = tf.concat([h, hh], 1)
         else:
-          h = tf.concat([h,hh], 0)
+          h = tf.concat([h, hh], 0)
     return h
 
   def conv(self, conv_kernel):
@@ -159,10 +159,10 @@ class RECNN():
       output = sess.run(self.output, feed_dict={self.input: input})
       return np.argmax(output, 1)
 
-  def evaluate(self, model_file):
-    #tf.reset_default_graph()
+  def evaluate(self, model_file, debug=False):
+    # tf.reset_default_graph()
     with tf.Session() as sess:
-      #tf.global_variables_initializer().run()
+      # tf.global_variables_initializer().run()
 
       self.saver.restore(sess=sess, save_path=self.output_folder + model_file)
       items = self.load_batches(self.test_batch_path)
@@ -184,11 +184,16 @@ class RECNN():
         current = np.argmax(output)
         if target == current:
           corr_count[target] += 1
+        elif debug:
+          print()
         prec_count[current] += 1
         recall_count[target] += 1
-
-    precs = [c / p for c, p in zip(corr_count, prec_count) if p != 0 and c != 0]
-    recalls = [c / r for c, r in zip(corr_count, recall_count) if r!= 0 and c != 0]
+    if self.relation_count == 2:
+      precs = [c / p if p != 0 else 0 for c, p in zip(corr_count, prec_count)]
+      recalls = [c / r if r != 0 else 0 for c, r in zip(corr_count, recall_count) if r != 0]
+    else:
+      precs = [c / p for c, p in zip(corr_count, prec_count) if p != 0 and c != 0]
+      recalls = [c / r for c, r in zip(corr_count, recall_count) if r != 0 and c != 0]
     print(corr_count)
     print(recall_count)
     print(corr_count)
@@ -196,10 +201,9 @@ class RECNN():
     print(recalls)
     prec = sum(precs) / len(precs)
     recall = sum(recalls) / len(recalls)
-    f1 = 2*prec*recall/(prec+recall)
-    print('precision:', prec)
-    print('recall:', recall)
-    print('f1',f1)
+    f1 = 2 * prec * recall / (prec + recall)
+    return prec, recall, f1
+
 
 def train_two():
   re_2 = RECNN(window_size=(2,))
@@ -215,19 +219,21 @@ def train_two():
   re_2_3_4 = RECNN(window_size=(2, 3, 4))
   re_2_3_4.train()
 
+
 def train_multi():
-  re_2 = RECNN(window_size=(2,),relation_count=29)
+  re_2 = RECNN(window_size=(2,), relation_count=29)
   re_2.train()
-  re_3 = RECNN(window_size=(3,),relation_count=29)
+  re_3 = RECNN(window_size=(3,), relation_count=29)
   re_3.train()
-  re_4 = RECNN(window_size=(4,),relation_count=29)
+  re_4 = RECNN(window_size=(4,), relation_count=29)
   re_4.train()
-  re_2_3 = RECNN(window_size=(2, 3),relation_count=29)
+  re_2_3 = RECNN(window_size=(2, 3), relation_count=29)
   re_2_3.train()
-  re_3_4 = RECNN(window_size=(3, 4),relation_count=29)
+  re_3_4 = RECNN(window_size=(3, 4), relation_count=29)
   re_3_4.train()
-  re_2_3_4 = RECNN(window_size=(2, 3, 4),relation_count=29)
+  re_2_3_4 = RECNN(window_size=(2, 3, 4), relation_count=29)
   re_2_3_4.train()
+
 
 if __name__ == '__main__':
   train_two()

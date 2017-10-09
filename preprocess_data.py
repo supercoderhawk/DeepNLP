@@ -6,7 +6,7 @@ from config import CorpusType, TrainMode
 
 class PreprocessData:
   def __init__(self, corpus, mode, type=CorpusType.Train,force_generate=True):
-    self.skip_window_left = 0
+    self.skip_window_left = 1
     self.skip_window_right = 1
     self.window_size = self.skip_window_left + self.skip_window_right + 1
     self.dict_path = 'corpus/' + corpus + '_dict.utf8'
@@ -58,9 +58,12 @@ class PreprocessData:
       extend_words = [2] * self.skip_window_left
       extend_words.extend(sentence_words)
       extend_words.extend([3] * self.skip_window_right)
+      if self.skip_window_right == 0:
+        et = enumerate(extend_words[self.skip_window_left:], self.skip_window_left)
+      else:
+        et = enumerate(extend_words[self.skip_window_left:-self.skip_window_right], self.skip_window_left)
       word_batch = list(
-        map(lambda item: extend_words[item[0] - self.skip_window_left:item[0] + self.skip_window_right + 1],
-            enumerate(extend_words[self.skip_window_left:-self.skip_window_right], self.skip_window_left)))
+        map(lambda item: extend_words[item[0] - self.skip_window_left:item[0] + self.skip_window_right + 1],et))
       characters_batch.append(np.array(word_batch, dtype=np.int32))
       labels_batch.append(np.array(self.labels[i], dtype=np.int32))
     #print(characters_batch)

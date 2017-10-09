@@ -57,21 +57,23 @@ def evaluate_re():
     re_two = RECNN(2, window_size=w, train=False)
     # re_multi = RECNN(29, window_size=w, train=False)
     name = 'cnn_emr_model100_{0}.ckpt'.format('_'.join(map(str, w)))
-    re_two.evaluate(name)
-    # re_multi.evaluate(name)
+    prec, recall, f1 = re_two.evaluate(name)
+    # prec, recall, f1 = re_multi.evaluate(name)
+    with open('corpus/re.txt', 'a', encoding='utf8') as f:
+      f.write(name + '\t{:.2f}\t{:.2f}\t{:.2f}\n'.format(prec * 100, recall * 100, f1 * 100))
 
 
 if __name__ == '__main__':
   # 实体识别
-  # print('mlp')
-  # evaluate_ner('tmp/mlp/mlp-ner-model20.ckpt')
-  # print('mlp+embed')
-  # evaluate_ner('tmp/mlp/mlp-ner-embed-model50.ckpt')
-  # print('lstm')
-  # evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
-  # print('lstm+embed')
-  # evaluate_ner('tmp/lstm/lstm-ner-embed-model50.ckpt')
+  print('mlp')
+  evaluate_ner('tmp/mlp/mlp-ner-model50.ckpt')
+  print('mlp+embed')
+  evaluate_ner('tmp/mlp/mlp-ner-embed-model50.ckpt')
+  print('lstm')
+  evaluate_ner('tmp/lstm/lstm-ner-model50.ckpt')
+  print('lstm+embed')
+  evaluate_ner('tmp/lstm/lstm-ner-embed-model50.ckpt')
   # 关系抽取
-  evaluate_re()
+  # evaluate_re()
   # re_two = RECNN(2, window_size=(4,), train=False)
   # re_two.evaluate('cnn_emr_model60_4.ckpt')
