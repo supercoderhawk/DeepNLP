@@ -66,8 +66,10 @@ class PrepareDataNer():
           self.test_filenames.append(filename)
     self.words = set()
     self.content = ''
-    self.annotations = self.read_annotation(self.base_folder, self.filenames)
-    self.test_annotations = self.read_annotation(self.test_base_folder, self.test_filenames)
+    e_categories = ['Sign','Part','Quantity']
+    r_categories = ['PartOf','QuantityValue']
+    self.annotations = self.read_annotation(self.base_folder, self.filenames,e_categories,r_categories)
+    self.test_annotations = self.read_annotation(self.test_base_folder, self.test_filenames,e_categories,r_categories)
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
     self.words_dictionary = self.build_words_dictionary()
     # 二分类
@@ -114,7 +116,7 @@ class PrepareDataNer():
     with open('corpus/emr_test_all_relations.rel', 'wb') as f:
       pickle.dump(self.test_all_relation_batches, f)
 
-  def read_annotation(self, base_folder, filenames):
+  def read_annotation(self, base_folder, filenames, e_categories,r_categories):
     annotation = {}
     for filename in filenames:
       with open(base_folder + filename + '.txt', encoding='utf8') as raw_file:
@@ -127,14 +129,16 @@ class PrepareDataNer():
         for result in results:
           sections = result.split(' ')
           if sections[0][0] == 'T':
-            entity = {'id': sections[0], 'category': sections[1], 'start': int(sections[2]), 'end': int(sections[3]),
-                      'content': sections[4]}
-            annotation_results['entity_start'][int(sections[2])] = {'id': sections[0]}
-            annotation_results['entity'][sections[0]] = entity
+            if sections[1] in e_categories:
+              entity = {'id': sections[0], 'category': sections[1], 'start': int(sections[2]), 'end': int(sections[3]),
+                        'content': sections[4]}
+              annotation_results['entity_start'][int(sections[2])] = {'id': sections[0]}
+              annotation_results['entity'][sections[0]] = entity
           elif sections[0][0] == 'R':
-            relation = {'id': sections[0], 'category': sections[1], 'primary': sections[2].split(':')[-1],
-                        'secondary': sections[3].split(':')[-1]}
-            annotation_results['relations'].append(relation)
+            if sections[1] in r_categories:
+              relation = {'id': sections[0], 'category': sections[1], 'primary': sections[2].split(':')[-1],
+                          'secondary': sections[3].split(':')[-1]}
+              annotation_results['relations'].append(relation)
         with open(base_folder + filename + '.cws', encoding='utf8') as cws_file:
           words = cws_file.read().strip().split('  ')
           lengths = [0]
@@ -156,6 +160,8 @@ class PrepareDataNer():
           annotation_results['cws']['words'] = words
           annotation_results['cws']['words_index'] = lengths
       annotation[filename] = {'raw': raw_text, 'annotation': annotation_results}
+      print('datasets summary:')
+      print('entities count',len(annotation_results['entity'].values()),' relation count',len(annotation_results['relations']))
     return annotation
 
   def build_dictionary(self):
@@ -427,7 +433,7 @@ class PrepareDataNer():
                 all_relations[sentence_id].append(relation_item)
 
     print(neg / (pos + neg))
-    print(all_neg / (pos + all_neg))
+    # print(all_neg / (pos + all_neg))
     train_relations = [r for rs in relations.values() for r in rs]
     all_relations = [r for rs in all_relations.values() for r in rs]
     for i, chs in enumerate(characters_index):
