@@ -6,6 +6,7 @@
 
 **本项目目前有重构的计划**
 
+**本项目迁移至[DeepLearning_NLP](https://github.com/supercoderhawk/DeepLearning_NLP)，故本项目暂时停止维护**
 
 ## 项目功能
 
