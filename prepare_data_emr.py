@@ -5,6 +5,7 @@ from collections import OrderedDict
 import pickle
 from itertools import chain
 from utils import plot_lengths
+from evaluate import estimate_ner
 
 
 class PrepareDataNer():
@@ -66,10 +67,10 @@ class PrepareDataNer():
           self.test_filenames.append(filename)
     self.words = set()
     self.content = ''
-    e_categories = ['Sign','Part','Quantity']
-    r_categories = ['PartOf','QuantityValue']
-    self.annotations = self.read_annotation(self.base_folder, self.filenames,e_categories,r_categories)
-    self.test_annotations = self.read_annotation(self.test_base_folder, self.test_filenames,e_categories,r_categories)
+    e_categories = ['Sign', 'Part', 'Quantity']
+    r_categories = ['PartOf', 'QuantityValue']
+    self.annotations = self.read_annotation(self.base_folder, self.filenames, e_categories, r_categories)
+    self.test_annotations = self.read_annotation(self.test_base_folder, self.test_filenames, e_categories, r_categories)
     self.dictionary, self.reverse_dictionary = self.build_dictionary()
     self.words_dictionary = self.build_words_dictionary()
     # 二分类
@@ -116,7 +117,7 @@ class PrepareDataNer():
     with open('corpus/emr_test_all_relations.rel', 'wb') as f:
       pickle.dump(self.test_all_relation_batches, f)
 
-  def read_annotation(self, base_folder, filenames, e_categories,r_categories):
+  def read_annotation(self, base_folder, filenames, e_categories, r_categories):
     annotation = {}
     for filename in filenames:
       with open(base_folder + filename + '.txt', encoding='utf8') as raw_file:
@@ -161,7 +162,8 @@ class PrepareDataNer():
           annotation_results['cws']['words_index'] = lengths
       annotation[filename] = {'raw': raw_text, 'annotation': annotation_results}
       print('datasets summary:')
-      print('entities count',len(annotation_results['entity'].values()),' relation count',len(annotation_results['relations']))
+      print('entities count', len(annotation_results['entity'].values()), ' relation count',
+            len(annotation_results['relations']))
     return annotation
 
   def build_dictionary(self):
@@ -517,5 +519,61 @@ class PrepareDataNer():
     return relation_batches
 
 
+def prepare_for_crfpp(folder, output_name):
+  content = []
+  filenames = set()
+  for _, _, names in os.walk(folder):
+    for filename in names:
+      name, _ = os.path.splitext(filename)
+      if name not in filenames:
+        filenames.add(name)
+  for filename in filenames:
+    path = folder + filename
+    with open(path + '.txt', encoding='utf-8') as src_file:
+      raw_text = src_file.read().replace('\n', '\r\n')
+      labels = len(raw_text) * ['O']
+      with open(path + '.ann', encoding='utf-8') as ann_file:
+        ann_items = ann_file.read().splitlines()
+        for item in ann_items:
+          sections = item.split('\t')
+          if sections[0].startswith('T'):
+            pos = sections[1].split(' ')
+            start, end = int(pos[1]), int(pos[2])
+            labels[start] = 'B'
+            if end - start - 1 > 0:
+              labels[start + 1:end] = ['I'] * (end - start - 1)
+      for ch, l in zip(raw_text, labels):
+        if ch == '\r':
+          continue
+        if ch == '。':
+          content.append(ch + '\t' + l + '\n')
+        else:
+          content.append(ch + '\t' + l)
+  with open(output_name, mode='w', encoding='utf-8') as o:
+    o.write('\n'.join(content))
+
+
+def evaluate_ner(path):
+  with open(path, encoding='utf-8') as f:
+    entries = map(lambda l: l.split('\t'), [l for l in f.read().splitlines() if l])
+    res = list(zip(*entries))
+    label_map = {'O': 0, 'B': 1, 'I': 2}
+    correct = list(map(lambda l: label_map[l], res[1]))
+    current = list(map(lambda l: label_map[l], res[2]))
+    corr, p_count, r_count = estimate_ner(current, correct)
+    p = corr / p_count
+    r = corr / r_count
+    f1 = 2 * p * r / (p + r)
+    print('precision:', p)
+    print('recall:', r)
+    print('f1', f1)
+
+
 if __name__ == '__main__':
-  PrepareDataNer()
+  # PrepareDataNer()
+  # train_folder = 'corpus/emr_paper/train/'
+  # test_folder = 'corpus/emr_paper/test/'
+  # prepare_for_crfpp(test_folder,'corpus/test.data')
+  # prepare_for_crfpp(train_folder, 'corpus/train.data')
+  # evaluate_ner('D:\Learning\master_project\clinicalText\CRF++-0.58\\res.data')
+  evaluate_ner('D:\Learning\master_project\clinicalText\CRF++-0.58\\res_slim.data')
