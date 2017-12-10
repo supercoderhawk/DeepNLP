@@ -11,6 +11,7 @@ from evaluate import estimate_ner
 class PrepareDataNer():
   def __init__(self, entity_batch_length=224, relation_batch_length=85, entity_batch_size=10, relation_batch_size=50):
     self.entity_tags = {'O': 0, 'B': 1, 'I': 2, 'P': 3}
+    self.reversed_tags = dict(zip(self.entity_tags.values(),self.entity_tags.keys()))
     self.entity_categories = {'Sign': 'SN', 'Symptom': 'SYM', 'Part': 'PT', 'Property': 'PTY', 'Degree': 'DEG',
                               'Quality': 'QLY', 'Quantity': 'QNY', 'Unit': 'UNT', 'Time': 'T', 'Date': 'DT',
                               'Result': 'RES',
@@ -90,6 +91,9 @@ class PrepareDataNer():
                                                       is_negative_relation=False,
                                                       is_relation_category=True)
     # self.plot_words_sentences()
+    self.export_coll(self.characters,self.entity_labels,'corpus/emr_training.conll')
+    self.export_coll(self.test_characters, self.test_entity_labels, 'corpus/emr_test.conll')
+    exit(1)
     np.save('corpus/emr_ner_training_characters', self.characters)
     np.save('corpus/emr_ner_training_labels', self.entity_labels)
     np.save('corpus/emr_ner_test_characters', self.test_characters)
@@ -116,6 +120,17 @@ class PrepareDataNer():
       pickle.dump(self.test_relation_batches, f)
     with open('corpus/emr_test_all_relations.rel', 'wb') as f:
       pickle.dump(self.test_all_relation_batches, f)
+
+  def export_coll(self,characters,labels,src_file):
+    text = ''
+    for character,label in zip(characters,labels):
+      chs = [self.reverse_dictionary[c] for c in character]
+      lbs = [self.reversed_tags[l] for l in label]
+      text += '\n'.join([' '.join(l) for l in  zip(chs,lbs)])
+      text += '\n\n'
+
+    with  open(src_file, 'w',encoding='utf-8') as f:
+      f.write(text)
 
   def read_annotation(self, base_folder, filenames, e_categories, r_categories):
     annotation = {}
@@ -291,7 +306,7 @@ class PrepareDataNer():
       doc_length = len(character_index)
       for index, ch_index in enumerate(character_index):
         if ch_index in seg:
-          if index != doc_length - 1 and self.dictionary['”'] != character_index[index + 1]:
+          if index != doc_length - 1 and self.dictionary['”'] != character_index[index + 1] :
             seg_index.append(index + 1)
       if seg_index[-1] != doc_length:
         seg_index.append(doc_length)
@@ -575,5 +590,5 @@ if __name__ == '__main__':
   # test_folder = 'corpus/emr_paper/test/'
   # prepare_for_crfpp(test_folder,'corpus/test.data')
   # prepare_for_crfpp(train_folder, 'corpus/train.data')
-  # evaluate_ner('D:\Learning\master_project\clinicalText\CRF++-0.58\\res.data')
+  evaluate_ner('D:\Learning\master_project\clinicalText\CRF++-0.58\\res.data')
   evaluate_ner('D:\Learning\master_project\clinicalText\CRF++-0.58\\res_slim.data')

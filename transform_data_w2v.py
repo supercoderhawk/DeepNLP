@@ -67,8 +67,7 @@ class TransformDataW2V(object):
       target_index = range(self.skip_window, len(target) + self.skip_window)
 
       def shuffle(i):
-        return random.sample(index[i - self.skip_window:i] + index[i + 1:i + self.skip_window + 1],
-                             2 * self.skip_window)
+        return random.sample(index[i - self.skip_window:i] + index[i + 1:i + self.skip_window + 1],2 * self.skip_window)
 
       output += [j for i in map(shuffle, target_index) for j in i]
       if len(input) != len(output):
